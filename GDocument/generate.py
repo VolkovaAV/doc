@@ -32,6 +32,12 @@ from docx.text.run import Run
 from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
+
+from docxtpl import DocxTemplate, InlineImage
+from docx.shared import Mm
+import os
+from typing import Dict, Any, Optional
+
 NameOrg = 'МЦФПИН'
 PersonalAcc = '40703810942000000672'
 BankName= 'ВОЛГО-ВЯТСКИЙ БАНК ПАО СБЕРБАНК'
@@ -124,361 +130,51 @@ def qr_code(df):
     img.save(path_name)
     return path_name
 
-def _apply_tnr_to_run(run, family="Times New Roman", size_pt=None):
-    run.font.name = family
-    rPr = run._element.rPr
-    if rPr is None:
-        rPr = run._element.get_or_add_rPr()
-    rFonts = rPr.rFonts
-    if rFonts is None:
-        rFonts = rPr.get_or_add_rFonts()
-    rFonts.set(qn('w:ascii'), family)
-    rFonts.set(qn('w:hAnsi'), family)
-    rFonts.set(qn('w:eastAsia'), family)
-    rFonts.set(qn('w:cs'), family)
+def _series_to_dict(ctx: pd.Series | Dict[str, str]) -> Dict[str, str]:
+    if isinstance(ctx, pd.Series):
+        # Преобразуем к строкам, чтобы избежать "nan"
+        return {str(k): ("" if pd.isna(v) else str(v)) for k, v in ctx.items()}
+    return {str(k): ("" if v is None else str(v)) for k, v in ctx.items()}
 
-
-def _apply_tnr_everywhere(doc, family="Times New Roman", size_pt=None):
-    # Стиль по умолчанию
-    try:
-        base = doc.styles["Normal"].font
-        base.name = family
-        f = doc.styles["Normal"].font.element.rPr.rFonts
-        f.set(qn('w:ascii'), family)
-        f.set(qn('w:hAnsi'), family)
-        f.set(qn('w:eastAsia'), family)
-        f.set(qn('w:cs'), family)
-    except Exception:
-        pass
-
-    # Все ранны в абзацах
-    for p in doc.paragraphs:
-        for r in p.runs:
-            _apply_tnr_to_run(r, family, size_pt)
-
-    # Все ранны в таблицах
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                for p in cell.paragraphs:
-                    for r in p.runs:
-                        _apply_tnr_to_run(r, family, size_pt)
-
-def generate_docx(template_path: str, output_path: str, df):
-    """
-    Генерирует DOCX-файл на основе шаблона, подставляя значения из context.
-    
-    :param template_path: путь к DOCX-шаблону (например, "template.docx")
-    :param output_path: путь к выходному DOCX-файлу (например, "result.docx")
-    :param context: словарь с заменами, например {"name": "Иван", "date": "19.09.2025"}
-    """
-    doc = Document(template_path)
-    context = df.to_dict()
-    def replace_keys_in_text(text: str) -> str:
-        """Заменяет ключи вида {key} на значения из context."""
-        for key, value in context.items():
-            text = text.replace(f'{{{key}}}', str(value))
-        return text
-    
-    # Проходим по абзацам
-    for paragraph in doc.paragraphs:
-        if '{' in paragraph.text and '}' in paragraph.text:
-            paragraph.text = replace_keys_in_text(paragraph.text)
-            # paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
-    # Проходим по таблицам
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                if '{' in cell.text and '}' in cell.text:
-                    cell.text = replace_keys_in_text(cell.text)
-    _apply_tnr_everywhere(doc, family="Times New Roman")
-    
-    doc.save(output_path)
-
-
-
-PATTERN = re.compile(r"\{([^{}]+)\}")
-
-# ----------------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ -----------------
-
-def _clone_run_format(dst_run: Run, src_run: Run):
-    """Скопировать ключевые параметры форматирования из src_run в dst_run."""
-    dst_run.bold = src_run.bold
-    dst_run.italic = src_run.italic
-    dst_run.underline = src_run.underline
-    if src_run.font.size is not None:
-        dst_run.font.size = src_run.font.size
-
-    if src_run.font.name:
-        family = src_run.font.name
-        dst_run.font.name = family
-        rPr = dst_run._element.get_or_add_rPr()
-        rFonts = rPr.get_or_add_rFonts()
-        rFonts.set(qn('w:ascii'), family)
-        rFonts.set(qn('w:hAnsi'), family)
-        rFonts.set(qn('w:eastAsia'), family)
-        rFonts.set(qn('w:cs'), family)
-
-def _gather_runs(paragraph) -> List[Tuple[str, Run]]:
-    return [(r.text, r) for r in paragraph.runs]
-
-def _split_text_by_placeholders(text: str):
-    tokens = []
-    last = 0
-    for m in PLACEHOLDER_RE.finditer(text):
-        if m.start() > last:
-            tokens.append(("text", text[last:m.start()]))
-        tokens.append(("ph", m.group(1)))
-        last = m.end()
-    if last < len(text):
-        tokens.append(("text", text[last:]))
-    return tokens
-
-def _rebuild_paragraph_with_format(
-    paragraph,
-    run_chunks: List[Tuple[str, Run]],
-    context: dict,
-    center_keys: bool = False,
-    image_key: str = "FILENAME",
-    image_width_cm: Optional[float] = None,
-    image_height_cm: Optional[float] = None,
-    center_image: bool = True,
-):
-    # Собираем полный текст и карту позиций символов -> исходный run
-    full_text = ""
-    pos_map: List[Run] = []
-    for txt, r in run_chunks:
-        full_text += txt
-        pos_map.extend([r] * len(txt))
-
-    # Полностью очищаем абзац
-    for _ in range(len(paragraph.runs)):
-        paragraph.runs[0]._element.getparent().remove(paragraph.runs[0]._element)
-
-    # Флаг: был ли ключ в абзаце (для центрирования)
-    has_key_here = False
-
-    idx = 0
-    for m in PLACEHOLDER_RE.finditer(full_text):
-        # текст до плейсхолдера
-        if m.start() > idx:
-            seg = full_text[idx:m.start()]
-            if seg:
-                src_run = pos_map[idx] if idx < len(pos_map) else None
-                new_run = paragraph.add_run(seg)
-                if src_run is not None:
-                    _clone_run_format(new_run, src_run)
-
-        key = m.group(1)
-        has_key_here = True
-
-        # ВСТАВКА КАРТИНКИ вместо {FILENAME}
-        if key == image_key:
-            path = context.get(key)
-            # создаём "пустой" run, чтобы вставить в него картинку
-            src_run_for_ph: Optional[Run] = pos_map[m.start()] if m.start() < len(pos_map) else None
-            pic_run = paragraph.add_run()
-            if src_run_for_ph is not None:
-                _clone_run_format(pic_run, src_run_for_ph)
-            # размеры
-            kw = {}
-            if image_width_cm is not None:
-                kw["width"] = Cm(image_width_cm)
-            if image_height_cm is not None:
-                kw["height"] = Cm(image_height_cm)
-            # вставка (если путь не задан — оставляем плейсхолдер как текст)
-            if path:
-                pic_run.add_picture(path, **kw)
-                # выравнивание абзаца под картинку при необходимости
-                if center_image:
-                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            else:
-                # нет пути — подставим исходный текст плейсхолдера
-                fallback_run = paragraph.add_run("{"+key+"}")
-                if src_run_for_ph is not None:
-                    _clone_run_format(fallback_run, src_run_for_ph)
-                else:
-                    # обычная текстовая подстановка
-                    value = str(context.get(key, "{"+key+"}"))
-                    src_run_for_ph: Optional[Run] = pos_map[m.start()] if m.start() < len(pos_map) else None
-                    ph_run = paragraph.add_run(value)
-                    if src_run_for_ph is not None:
-                        _clone_run_format(ph_run, src_run_for_ph)
-
-                idx = m.end()
-
-    # хвост текста после последнего плейсхолдера
-    if idx < len(full_text):
-        seg = full_text[idx:]
-        src_run = pos_map[idx] if idx < len(pos_map) else None
-        new_run = paragraph.add_run(seg)
-        if src_run is not None:
-            _clone_run_format(new_run, src_run)
-
-    # Центрировать абзац, если в нём были ключи и это запрошено
-    if has_key_here and center_keys:
-        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-def _process_paragraph(
-    paragraph,
-    context: dict,
-    center_keys: bool = False,
-    image_key: str = "FILENAME",
-    image_width_cm: Optional[float] = None,
-    image_height_cm: Optional[float] = None,
-    center_image: bool = True,
-):
-    if "{" not in paragraph.text or "}" not in paragraph.text:
-        return
-    chunks = _gather_runs(paragraph)
-    if len(chunks) == 1:
-        # быстрый путь
-        txt, r = chunks[0]
-        tokens = _split_text_by_placeholders(txt)
-        paragraph.clear()
-        has_key_here = False
-        for kind, payload in tokens:
-            if kind == "text":
-                run = paragraph.add_run(payload)
-                _clone_run_format(run, r)
-            else:  # ph
-                has_key_here = True
-                key = payload
-                if key == image_key:
-                    path = context.get(key)
-                    pic_run = paragraph.add_run()
-                    _clone_run_format(pic_run, r)
-                    if path:
-                        kw = {}
-                        if image_width_cm is not None:
-                            kw["width"] = Cm(image_width_cm)
-                        if image_height_cm is not None:
-                            kw["height"] = Cm(image_height_cm)
-                        pic_run.add_picture(path, **kw)
-                        if center_image:
-                            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    else:
-                        fb = paragraph.add_run("{"+key+"}")
-                        _clone_run_format(fb, r)
-                else:
-                    val = str(context.get(key, "{"+key+"}"))
-                    rr = paragraph.add_run(val)
-                    _clone_run_format(rr, r)
-        if has_key_here and center_keys:
-            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        return
-
-    # сложный случай: плейсхолдеры пересекают несколько run'ов
-    _rebuild_paragraph_with_format(
-        paragraph, chunks, context,
-        center_keys=center_keys,
-        image_key=image_key,
-        image_width_cm=image_width_cm,
-        image_height_cm=image_height_cm,
-        center_image=center_image
-    )
-
-def _process_cell(cell, **kwargs):
-    for p in cell.paragraphs:
-        _process_paragraph(p, **kwargs)
-
-# ----------------- ОСНОВНАЯ ФУНКЦИЯ -----------------
-
-def generate_docx_preserve_format(
+def generate_docx_advanced(
     template_path: str,
     output_path: str,
-    context: pd.Series,
-    *,
-    center_keys: bool = False,
-    image_key: str = "FILENAME",
-    image_width_cm: Optional[float] = None,
-    image_height_cm: Optional[float] = None,
-    center_image: bool = True,
-):
+    df: pd.Series,
+    image_mapping: Optional[Dict[str, str]] = None,
+    default_image_width: int = 60
+) -> None:
     """
-    Подстановка значений из pd.Series с сохранением форматирования шаблона.
-    Специальный ключ {FILENAME} (или другой через image_key) вставляет картинку.
-    - center_keys=True центрирует абзацы, содержащие ключи.
-    - image_width_cm/height_cm — опциональные размеры изображения.
-    - center_image=True — центрировать абзац с картинкой.
+    Усовершенствованная версия с явным указанием mapping изображений.
+    
+    Args:
+        image_mapping: Словарь {ключ_в_шаблоне: путь_к_изображению}
     """
-    doc = Document(template_path)
-    ctx = context.to_dict()
-    for p in doc.paragraphs:
-        _process_paragraph(
-            p, ctx,
-            center_keys=center_keys,
-            image_key=image_key,
-            image_width_cm=image_width_cm,
-            image_height_cm=image_height_cm,
-            center_image=center_image
-        )
-
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                _process_cell(
-                    cell,
-                    context=ctx,
-                    center_keys=center_keys,
-                    image_key=image_key,
-                    image_width_cm=image_width_cm,
-                    image_height_cm=image_height_cm,
-                    center_image=center_image
-                )
-
-    doc.save(output_path)
-
-def bill(df):
-    '''
-    Функция генерирует tex-файл для счета по шаблону
-    Шаблон счета расположен: /templates/bill.tex
-    Путь к файлу: /files
-    Название файла генерируется при помощи функции fname с параметром type='bill'
-    Вход:
-        df - pd.Series - информация об участнике
-    Выход:
-        Путь к сохраненному файлу 
-
-    '''
-
-    global NameOrg
-    global PersonalAcc
-    global BankName
-    global BIC
-    global CorrespAcc
-    global KPP
-    global PayeeINN
-
-    fileObj = codecs.open( "templates/bill.tex", "r", "utf_8" )
-    text = fileObj.read()
-
-    text_tmp = text.replace('NAMEORG', NameOrg)
-    text_tmp = text_tmp.replace('INN', PayeeINN)
-    text_tmp = text_tmp.replace('NUMBERCHET', PersonalAcc)
-    text_tmp = text_tmp.replace('NAMEBANK', BankName)
-    text_tmp = text_tmp.replace('BICBANK', BIC)
-    text_tmp = text_tmp.replace('KORRCHET', CorrespAcc)
-    text_tmp = text_tmp.replace('KPP', KPP)
-
-    # text_tmp = text_tmp.replace('DOCNUM', df['DOCNUM'])
-
-    if df["MIDDLE_NAME"]!=df["MIDDLE_NAME"]:
-        text_tmp = text_tmp.replace('PLATE', f'{df["LAST_NAME"]} {df["FIRST_NAME"]}')
-        filename = f'{df['LAST_NAME']}_{df["FIRST_NAME"]}_{df["SUM"]}'
-    else:
-        text_tmp = text_tmp.replace('PLATE', f'{df["LAST_NAME"]} {df["FIRST_NAME"]} {df["MIDDLE_NAME"]}')
-        filename = f'{df['LAST_NAME']}_{df["FIRST_NAME"][0]}_{df["MIDDLE_NAME"][0]}_{df["SUM"]}'
-
-    text_tmp1 = text_tmp.replace('SUM', df['SUMM'])
-    text_tmp1 = text_tmp1.replace('FILENAME.png', qr_code(df))
-
-    f_temp = codecs.open(f'files/{fname(df, type='bill')}.tex', 'w', "utf_8")
-    f_temp.write(text_tmp1)
-    f_temp.close()
-    # print(fname(df, type='bill'))
-    return f'./files/{fname(df, type='bill')}.tex'
+    context = _series_to_dict(df)
+    image_mapping = {"FILENAME": f"files/qr_code/{fname(df, 'qr')}.png"}
+    try:
+        doc = DocxTemplate(template_path)
+        
+        # Обрабатываем изображения
+        if image_mapping:
+            for key, image_path in image_mapping.items():
+                if os.path.exists(image_path):
+                    image = InlineImage(doc, image_path, width=Mm(default_image_width))
+                    context[key] = image
+                else:
+                    print(f"Предупреждение: изображение не найдено - {image_path}")
+                    context[key] = "[Изображение не найдено]"
+        
+        doc.render(context)
+        
+        # Создаем папку для output если не существует
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        doc.save(output_path)
+        
+        return f"Документ создан: {output_path}"
+        
+    except Exception as e:
+        print(f"Ошибка: {e}")
+        raise
 
 def email(df, first=True):
     '''
@@ -512,77 +208,12 @@ def email(df, first=True):
     
     return text
 
-
-def act(df):
-    '''
-    Функция генерирует tex-файл для акта по шаблону
-    Шаблон счета расположен: /templates/act.tex
-    Путь к файлу: /files
-    Название файла генерируется при помощи функции fname с параметром type='bill'
-    Вход:
-        df - pd.Series - информация об участнике
-    Выход:
-        Путь к сохраненному файлу 
-
-    '''
-    fileObj = codecs.open("templates/act.tex", "r", "utf_8" )
-    text = fileObj.read()
-    # text_tmp = text.replace('DOCNUM', df['DOCNUM'])
-    
-    text_tmp = text.replace('FIRST_NAME', df['FIRST_NAME'])
-
-
-    if df['SUMM']=='nan':
-        text_tmp = text_tmp.replace('SUMM', '\\underline{\parbox{1 cm}{\hphantom}}')
-        text_tmp = text_tmp.replace('SNAME', '\\underline{\parbox{5 cm}{\hphantom}}')
-    else:
-        # print(float(df['SUMM'])/1000)
-        text_tmp = text_tmp.replace('SUMM', str(int(df['SUMM'])//1000))
-        text_tmp = text_tmp.replace('SNAME', num2words(int(df['SUMM'])//1000, lang='ru'))
-        
-
-    if df['SEX']=='m':
-        text_tmp = text_tmp.replace('SEX', 'ый')
-    elif df['SEX']=='w':
-        text_tmp = text_tmp.replace('SEX', 'ая')
-    else:
-        text_tmp = text_tmp.replace('SEX', 'ый(ая)')
-
-    # if (df['MIDDLE_NAME']=='nan') or ((df['MIDDLE_NAME'])!= (df['MIDDLE_NAME'])):
-    #     text_tmp = text_tmp.replace('FNAME.', df['LAST_NAME'])
-    #     text_tmp = text_tmp.replace('MNAME.', '')
-    #     text_tmp = text_tmp.replace('LAST_NAME.', df['FIRST_NAME'][0])
-    #     text_tmp = text_tmp.replace('MIDDLE_NAME', '')
-        
-    # else:
-    #     text_tmp = text_tmp.replace('FNAME', df['FIRST_NAME'][0])
-    #     text_tmp = text_tmp.replace('MIDDLE_NAME', df['MIDDLE_NAME'])
-    #     text_tmp = text_tmp.replace('MNAME', df['MIDDLE_NAME'][0])
-    #     text_tmp = text_tmp.replace('LAST_NAME.', df['LAST_NAME'])
-    text_tmp = text_tmp.replace('FNAME', df['FIRST_NAME'][0])
-    text_tmp = text_tmp.replace('LAST_NAME', df['LAST_NAME'])
-    if (df['MIDDLE_NAME']=='nan') or ((df['MIDDLE_NAME'])!=(df['MIDDLE_NAME'])):
-        text_tmp = text_tmp.replace('MNAME.', '')
-        text_tmp = text_tmp.replace('MIDDLE_NAME', '')
-    else:
-        text_tmp = text_tmp.replace('MIDDLE_NAME', df['MIDDLE_NAME'])
-        text_tmp = text_tmp.replace('MNAME', df['MIDDLE_NAME'][0])
-        
-
-    f_temp = codecs.open(f'./files/{fname(df, type='act')}.tex', 'w', "utf_8")
-
-    text_tmp = text_tmp.replace('LAST_NAME', df['LAST_NAME'])
-    f_temp.write(text_tmp)
-    f_temp.close()
-    return f'./files/{fname(df, type='act')}.tex'
-
 def checking_exel(name_table):
     if os.path.exists(name_table):
         print(f"⚠️ Файл '{name_table}' уже существует. Создание отменено.")
         return True
     else:
         return False
-
 
 def gen_all(path):
     '''
@@ -603,25 +234,22 @@ def gen_all(path):
     
     df1['SEX'] = np.where(df1['MIDDLE_NAME'].str.endswith('на'), 'ая',np.where(df1['MIDDLE_NAME'].str.endswith('ич'), 'ый','ый(ая)')
 )
-    df1['SUMM_NAME'] = num2words(int(df1['SUMM']), lang='ru')
+    df1['SUMM_NAME'] = df1['SUMM'].apply(lambda x: num2words(int(x), lang='ru'))
 
     df1['F_NAME'] = df1['FIRST_NAME'].str[0] + '.'
     df1['M_NAME'] = df1['MIDDLE_NAME'].str[0] + '.'
-    df1["FILENAE"] = df1.apply(lambda row: fname(row, 'qr')+ ".png", axis =1)
-    # df1["FILENAE"] = df1.apply(lambda row: num2words(row, 'qr')+ ".png", axis =1)
+
 
     # print(df1)
     for person_ID in range(len(df1)):
-        print()
-        
-        qr_code(df1.iloc[person_ID])
-        # generate_docx(f'{config.TEMP_FOLDER_NAME}/act.docx', f'{path}/out/{fname(df1.iloc[person_ID], 'act')}'+ '.docx', df1.iloc[person_ID])
-        print(df1.iloc[person_ID])
-        # generate_docx(f'{config.TEMP_FOLDER_NAME}/bill.docx', f'{path}/out/{fname(df1.iloc[person_ID], 'bill')}'+ '.docx', df1.iloc[person_ID])
+        res = ''
+        qr_code(df1.iloc[person_ID])+ '\n'
+        generate_docx_advanced(f'{config.TEMP_FOLDER_NAME}/bill.docx', f'{path}/out/{fname(df1.iloc[person_ID], 'bill')}.docx', df1.iloc[person_ID])
+        generate_docx_advanced(f'{config.TEMP_FOLDER_NAME}/act.docx', f'{path}/out/{fname(df1.iloc[person_ID], 'act')}.docx', df1.iloc[person_ID]) + '\n'
 
-        generate_docx_from_template(f'{config.TEMP_FOLDER_NAME}/act.docx',f'{path}/out/{fname(df1.iloc[person_ID], 'act')}'+ '.docx', df1.iloc[person_ID])
+    res += 'Генерация завершена!' 
 
-    return 'qr code создан'
+    return res
         
 
     
@@ -629,24 +257,3 @@ def gen_all(path):
     # print(bill(df))
     # pdf(filename=bill(df), pathname=f'{path}/out')
     # pdf(filename=act(df), pathname=f'{path}/out')
-
-
-
-def gen_all_summ(df, out_dir = 'files'):
-    '''
-    Функция запускает процесс генерации договора и счета для всех вариантов сумм
-    Вход: 
-        df - pd.Series - информация об участнике
-    '''
-    summ = ['80000', '60000']
-    if not os.path.isdir(out_dir+'/out'):
-        os.makedirs(out_dir+'/out',exist_ok=True)
-
-    if not os.path.isdir(out_dir+'qr_code'):
-        os.makedirs(out_dir+'/qr_code',exist_ok=True)
-    for i in summ:
-        df['SUMM'] = i
-        # print(df)
-    # print(bill(df))
-        pdf(filename=bill(df), pathname=out_dir+'/out')
-        pdf(filename=act(df), pathname=out_dir+'/out') 

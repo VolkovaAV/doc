@@ -115,13 +115,13 @@ def create_act_template_doc(filename):
     p1 = doc.add_paragraph()
     p1.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY  # центрирование всего параграфа
 
-    run03 = p1.add_run('{LAST_NAME} {FIRST_NAME} {MIDDLE_NAME}')
+    run03 = p1.add_run('{{ LAST_NAME }} {{ FIRST_NAME }} {{ MIDDLE_NAME }}')
     run03.font.name = "Times New Roman"
     run03.font.size = Pt(11)
     run03.underline = True
 
 
-    run3 = p1.add_run(', именуе{SEX} в дальнейшем «Заказчик», с одной стороны, и МЦФПИН в лице ректора Евтушенко Андрея Александровича, действующего на основании Устава, именуемый в дальнейшем «Исполнитель», составили настоящий акт в подтверждение того, что Исполнителем оказаны услуги по организации участия Заказчика в ')
+    run3 = p1.add_run(', именуе{{ SEX }} в дальнейшем «Заказчик», с одной стороны, и МЦФПИН в лице ректора Евтушенко Андрея Александровича, действующего на основании Устава, именуемый в дальнейшем «Исполнитель», составили настоящий акт в подтверждение того, что Исполнителем оказаны услуги по организации участия Заказчика в ')
     run3.font.name = "Times New Roman"
     run3.font.size = Pt(11)
     
@@ -133,7 +133,7 @@ def create_act_template_doc(filename):
     p2 = doc.add_paragraph()
     p2.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY  # центрирование всего параграфа
 
-    run5 = p2.add_run('Стоимость оказанных услуг {SUMM} руб. 00 коп. ({SUMM_NAME} рублей 00 копеек). НДС не облагается на основании п. 1 ст. 145 НК РФ.')
+    run5 = p2.add_run('Стоимость оказанных услуг {{ SUMM }} руб. 00 коп. ({{ SUMM_NAME }} рублей 00 копеек). НДС не облагается на основании п. 1 ст. 145 НК РФ.')
     run5.font.name = "Times New Roman"
     run5.font.size = Pt(11)
     
@@ -157,7 +157,7 @@ def create_act_template_doc(filename):
         ("ЗАКАЗЧИК", "ИСПОЛНИТЕЛЬ"),
         (" ", "МЦФПИН"),
         (" ", "Ректор"),
-        ("___________/{F_NAME}{M_NAME}{LAST_NAME}", "___________/А.А.Евтушенко"),
+        ("___________/{{ F_NAME }}{{ M_NAME }}{{ LAST_NAME }}", "___________/А.А.Евтушенко"),
     ]
     for row_idx, (c1, c2) in enumerate(data):
         row = table.rows[row_idx]
@@ -295,7 +295,7 @@ def create_bill_template_doc(filename="complex_table.docx"):
     run.font.italic = True
     run.font.size = Pt(10)
 
-    c(13, 0).text = "{LAST_NAME} {FIRST_NAME} {MIDDLE_NAME}"
+    c(13, 0).text = "{{ LAST_NAME }} {{ FIRST_NAME }} {{ MIDDLE_NAME }}"
 
     c(14, 0).text = " "
     p = c(14, 0).paragraphs[0]
@@ -303,7 +303,7 @@ def create_bill_template_doc(filename="complex_table.docx"):
     run.font.italic = True
     run.font.size = Pt(10)
 
-    c(15, 0).text = "{SUMM} руб. 00 коп."
+    c(15, 0).text = "{{ SUMM }} руб. 00 коп."
 
     c(16, 0).text = " "
     p = c(16, 0).paragraphs[0]
@@ -311,7 +311,7 @@ def create_bill_template_doc(filename="complex_table.docx"):
     run.font.italic = True
     run.font.size = Pt(10)
 
-    c(0, 4).text = "{FILENAME}"
+    c(0, 4).text = "{{ FILENAME }}"
     
 
 
