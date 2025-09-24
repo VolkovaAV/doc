@@ -208,5 +208,7 @@ __marimo__/
 
 
 # My Files
-.xlsx
+participant_list.xlsx
 files/
+_config.py
+templates/

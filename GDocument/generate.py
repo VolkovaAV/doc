@@ -1,63 +1,32 @@
-# from . import NameOrg, PersonalAcc, BankName, BIC, CorrespAcc, KPP, PayeeINN
-from docx import Document
-from docx.oxml.ns import qn
-
-import subprocess # для запуска процессов 
 from transliterate import translit # для корректной записи файлов
 
+from docx2pdf import convert
+
 import qrcode # для генерации кода
-import codecs # для обработки рускоязычных файлов
 
 from num2words import num2words 
 
-import copy
-
 import os
+import sys
+from pathlib import Path
+# Добавляем корневую директорию
+root_path = Path(__file__).parent.parent
+sys.path.insert(0, str(root_path))
 
-import config
+import _config
+
 import pandas as pd
 import numpy as np
-
-
-import re
-
-
-from .create import create_excel_with_columns
-
-
-from typing import List, Tuple, Optional
-
-from docx.text.run import Run
-
-from docx.shared import Pt, Cm
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-
 
 from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Mm
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Optional
+
+from .json_work import *
 
 
 
-
-def pdf(filename, pathname='out'):
-    '''
-    Функция генерирует pdf-файл из latex-файла
-
-    Вход: 
-        filename - str - путь до файла
-        pathname - str - папка для файлов
-    '''
-    print(filename)
-    command = ['latexmk', '-pdflatex', f'-outdir={pathname}', filename]
-
-    process = subprocess.Popen(command)
-
-    # process = subprocess.Popen(command)
-
-    process.wait()
-    return 0
 
 def fname(df, type):
     '''
@@ -79,7 +48,7 @@ def fname(df, type):
 
     return result
 
-def qr_code(df):
+def qr_code(df, params):
     '''
     Функция сохраняет в папку проекта картинку с qr кодом для оплаты.
     Картинка сохраняется в папку по адресу: /files/qr_code
@@ -90,13 +59,7 @@ def qr_code(df):
     Выход:
         path_name - название сохраненного файла
     '''
-    global NameOrg
-    global PersonalAcc
-    global BankName
-    global BIC
-    global CorrespAcc
-    global KPP
-    global PayeeINN
+    PAY_PURPOSE= f'Рег. взнос за участие в {params['EVENT_NAME']}, {params['DATE_INFO']}, {params['PLACE_INFO']}'
 
     if df["MIDDLE_NAME"]!=df["MIDDLE_NAME"]:
         PersonInfo = '(участник '+df['LAST_NAME']+' '+df['FIRST_NAME'][0]+'.)'
@@ -104,14 +67,14 @@ def qr_code(df):
         PersonInfo = '(участник '+df['LAST_NAME']+' '+df['FIRST_NAME'][0]+'. '+df['MIDDLE_NAME'][0]+'.)'
 
     data=f'ST00012|'\
-        f'Name={NameOrg}|'\
-        f'PersonalAcc={PersonalAcc}|'\
-        f'BankName={BankName}|'\
-        f'BIC={BIC}|'\
-        f'CorrespAcc={CorrespAcc}|'\
-        f'KPP={KPP}|'\
-        f'PayeeINN={PayeeINN}|'\
-        f'Purpose= {config.PAY_PURPOSE} {PersonInfo}|'\
+        f'Name={_config.NameOrg}|'\
+        f'PersonalAcc={_config.PersonalAcc}|'\
+        f'BankName={_config.BankName}|'\
+        f'BIC={_config.BIC}|'\
+        f'CorrespAcc={_config.CorrespAcc}|'\
+        f'KPP={_config.KPP}|'\
+        f'PayeeINN={_config.PayeeINN}|'\
+        f'Purpose= {PAY_PURPOSE} {PersonInfo}|'\
         f'SUM={int(df['SUMM'])*100}'
     
     img = qrcode.make(data)
@@ -165,7 +128,15 @@ def generate_docx_advanced(
         print(f"Ошибка: {e}")
         raise
 
-def email(df, first=True):
+def pdf(df, type):
+    # path = f'{_config.FILES_FOLDER_NAME}/'
+    if not os.path.isdir(f'{_config.FILES_FOLDER_NAME}/pdf'):
+        os.makedirs(f'{_config.FILES_FOLDER_NAME}/pdf')
+
+    convert(_config.FILES_FOLDER_NAME+ '/out/' + fname(df, type) + ".docx", _config.FILES_FOLDER_NAME + '/pdf/' + fname(df, type) + ".pdf")
+    return f'{df['LAST_NAME']} {df['FIRST_NAME']}: генерация завершена \n'
+
+def email(df):
     '''
     Функция генерирует текст для электронного письма с использованием html-разметки
 
@@ -175,11 +146,8 @@ def email(df, first=True):
     Выход:
         text - str - текст письма
     '''
-    if first:
-        suffix='first'
-    else:
-        suffix='resent'
-    with open(f"templates/email_{suffix}.html", encoding='utf-8') as f:
+
+    with open(f"{_config.TEMP_FOLDER_NAME}/email.html", encoding='utf-8') as f:
         text_template = f.read()
 
     text = text_template.replace('FIRST_NAME', df['FIRST_NAME'])
@@ -188,12 +156,7 @@ def email(df, first=True):
     else:
         text = text.replace('MIDDLE_NAME', df['MIDDLE_NAME'])
     
-    if df['SEX']=='m':
-        text = text.replace('SEX', 'ый')
-    elif df['SEX']=='w':
-        text = text.replace('SEX', 'ая')
-    else:
-        text = text.replace('SEX', 'ый(ая)')
+    text = text.replace('SEX', df['SEX'])
     
     return text
 
@@ -204,19 +167,32 @@ def checking_exel(name_table):
     else:
         return False
 
-def gen_all(path):
+def generate_one_person(df, params):
+ 
+    qr_code(df, params)+ '\n'
+    generate_docx_advanced(f'{_config.TEMP_FOLDER_NAME}/bill.docx', f'{_config.FILES_FOLDER_NAME}/out/{fname(df, 'bill')}.docx', df) + '\n'
+        
+    generate_docx_advanced(f'{_config.TEMP_FOLDER_NAME}/act.docx', f'{_config.FILES_FOLDER_NAME}/out/{fname(df, 'act')}.docx', df) + '\n'
+  
+    pdf(df, 'act')
+    res = pdf(df, 'bill')
+
+    return res
+
+def gen_all():
     '''
     Функция запускает процесс генерации акта и счета
     Вход: 
         df - pd.Series - информация об участнике
     '''
-    if not os.path.isdir(f'{path}/out'):
-        os.makedirs(f'{path}/out')
+    params = load_config_json()
+    if not os.path.isdir(f'{_config.FILES_FOLDER_NAME}/out'):
+        os.makedirs(f'{_config.FILES_FOLDER_NAME}/out')
 
-    if not os.path.isdir(f'{path}/qr_code'):
-        os.makedirs(f'{path}/qr_code')
+    if not os.path.isdir(f'{_config.FILES_FOLDER_NAME}/qr_code'):
+        os.makedirs(f'{_config.FILES_FOLDER_NAME}/qr_code')
 
-    xl = pd.read_excel(config.TB_NAME, dtype='str')
+    xl = pd.read_excel(_config.TB_NAME, dtype='str')
     df1 = pd.DataFrame(xl)
 
     df1 =df1.rename(columns={'Фамилия': 'LAST_NAME', 'Имя': 'FIRST_NAME', 'Отчество': 'MIDDLE_NAME', 'Сумма': 'SUMM'})
@@ -228,21 +204,11 @@ def gen_all(path):
     df1['F_NAME'] = df1['FIRST_NAME'].str[0] + '.'
     df1['M_NAME'] = df1['MIDDLE_NAME'].str[0] + '.'
 
-
+    res = ''
     # print(df1)
     for person_ID in range(len(df1)):
-        res = ''
-        qr_code(df1.iloc[person_ID])+ '\n'
-        generate_docx_advanced(f'{config.TEMP_FOLDER_NAME}/bill.docx', f'{path}/out/{fname(df1.iloc[person_ID], 'bill')}.docx', df1.iloc[person_ID])
-        generate_docx_advanced(f'{config.TEMP_FOLDER_NAME}/act.docx', f'{path}/out/{fname(df1.iloc[person_ID], 'act')}.docx', df1.iloc[person_ID]) + '\n'
-
+        generate_one_person(df1.iloc[person_ID], params)
+        
     res += 'Генерация завершена!' 
 
     return res
-        
-
-    
-    
-    # print(bill(df))
-    # pdf(filename=bill(df), pathname=f'{path}/out')
-    # pdf(filename=act(df), pathname=f'{path}/out')

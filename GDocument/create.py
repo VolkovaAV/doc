@@ -1,5 +1,13 @@
 from docx import Document
-import config
+import sys
+from pathlib import Path
+from .json_work import *
+
+# Добавляем корневую директорию
+root_path = Path(__file__).parent.parent
+sys.path.insert(0, str(root_path))
+
+import _config
 import os
 import pandas as pd
 from docx.shared import Pt, Cm
@@ -42,7 +50,6 @@ def remove_table_borders(table):
         elem.set(qn('w:val'), 'nil')
         tblBorders.append(elem)
 
-
 def make_row_bold(row):
     """Делает весь текст в строке жирным."""
     for cell in row.cells:
@@ -76,7 +83,8 @@ def set_cell_border(cell, **kwargs):
                 if key in edge_data:
                     element.set(qn(f'w:{key}'), str(edge_data[key]))
 
-def create_act_template_doc(filename):
+def create_act_template_doc(filename, params):
+
     doc = Document()
     section = doc.sections[0]
     section.top_margin = Cm(2)     # верхнее
@@ -103,11 +111,10 @@ def create_act_template_doc(filename):
     run1.font.bold = True
 
     # --- МЕРОПРИЯТИЕ ---
-    run2 = p.add_run("НАЗВАНИЕ МЕРОПРИЯТИЯ")
+    run2 = p.add_run(params['EVENT_INFO'])
     run2.font.name = "Times New Roman"
     run2.font.size = Pt(11)
     run2.font.bold = True
-    run2.font.highlight_color = WD_COLOR_INDEX.YELLOW  # жёлтое выделение
 
     doc.add_paragraph()
 
@@ -125,10 +132,10 @@ def create_act_template_doc(filename):
     run3.font.name = "Times New Roman"
     run3.font.size = Pt(11)
     
-    run4 = p1.add_run("НАЗВАНИЕ МЕРОПРИЯТИЯ")
+    run4 = p1.add_run(params['EVENT_INFO'])
     run4.font.name = "Times New Roman"
     run4.font.size = Pt(11)
-    run4.font.highlight_color = WD_COLOR_INDEX.YELLOW  # жёлтое выделение
+    # run4.font.highlight_color = WD_COLOR_INDEX.YELLOW  # жёлтое выделение
 
     p2 = doc.add_paragraph()
     p2.alignment = WD_PARAGRAPH_ALIGNMENT.JUSTIFY  # центрирование всего параграфа
@@ -175,7 +182,7 @@ def create_act_template_doc(filename):
     doc.save(filename)
     return f"Создан документ-шаблон '{filename}'."
 
-def create_bill_template_doc(filename="complex_table.docx"):
+def create_bill_template_doc(filename, params):
     doc = Document()
 
     title = doc.add_paragraph("СЧЁТ")
@@ -188,7 +195,7 @@ def create_bill_template_doc(filename="complex_table.docx"):
     doc.add_paragraph()
 
     # Таблица 3 столбца × 4 строки
-    table = doc.add_table(rows=17, cols=5)
+    table = doc.add_table(rows=18, cols=5)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = False
 
@@ -217,6 +224,8 @@ def create_bill_template_doc(filename="complex_table.docx"):
     c(14, 0).merge(c(14, 4))
     c(15, 0).merge(c(15, 4))
     c(16, 0).merge(c(16, 4))
+    c(17, 0).merge(c(17, 4))
+
     c(0, 4).merge(c(7, 4))
 
 
@@ -275,38 +284,44 @@ def create_bill_template_doc(filename="complex_table.docx"):
 
     c(9, 0).text = " "
     p = c(9, 0).paragraphs[0]
-    run = p.add_run("НАЗВАНИЕ МЕРОПРИЯТИЯ")
-    run.font.highlight_color = WD_COLOR_INDEX.YELLOW  # жёлтое выделение
+    run = p.add_run(" ")
+    run.font.italic = True
+    run.font.size = Pt(10)
 
     c(10, 0).text = " "
     p = c(10, 0).paragraphs[0]
+    run = p.add_run(params['EVENT_INFO'])
+    # run.font.highlight_color = WD_COLOR_INDEX.YELLOW  # жёлтое выделение
+
+    c(11, 0).text = " "
+    p = c(11, 0).paragraphs[0]
     run = p.add_run("Назначение платежа")
     run.font.italic = True
     run.font.size = Pt(10)
 
-    c(11, 0).text = " "
-    p = c(11, 0).paragraphs[0]
-    run = p.add_run("ДАТЫ ПРОВЕДЕНИЯ")
-    run.font.highlight_color = WD_COLOR_INDEX.YELLOW  # жёлтое выделение
-
     c(12, 0).text = " "
     p = c(12, 0).paragraphs[0]
-    run = p.add_run("Время проведения мероприятия")
+    run = p.add_run(params['DATE_INFO'] + ', '+ params['PLACE_INFO'])
+    # run.font.highlight_color = WD_COLOR_INDEX.YELLOW  # жёлтое выделение
+
+    c(13, 0).text = " "
+    p = c(13, 0).paragraphs[0]
+    run = p.add_run("Время и место проведения мероприятия")
     run.font.italic = True
     run.font.size = Pt(10)
 
-    c(13, 0).text = "{{ LAST_NAME }} {{ FIRST_NAME }} {{ MIDDLE_NAME }}"
+    c(14, 0).text = "{{ LAST_NAME }} {{ FIRST_NAME }} {{ MIDDLE_NAME }}"
 
-    c(14, 0).text = " "
-    p = c(14, 0).paragraphs[0]
+    c(15, 0).text = " "
+    p = c(15, 0).paragraphs[0]
     run = p.add_run("Плательщик")
     run.font.italic = True
     run.font.size = Pt(10)
 
-    c(15, 0).text = "{{ SUMM }} руб. 00 коп."
+    c(16, 0).text = "{{ SUMM }} руб. 00 коп."
 
-    c(16, 0).text = " "
-    p = c(16, 0).paragraphs[0]
+    c(17, 0).text = " "
+    p = c(17, 0).paragraphs[0]
     run = p.add_run("Сумма платежа")
     run.font.italic = True
     run.font.size = Pt(10)
@@ -328,7 +343,7 @@ def create_bill_template_doc(filename="complex_table.docx"):
                 
     # --- Устанавливаем только нижнюю границу для ячейки (0,0) ---
 
-    target_cells = [c(0, 0), c(0, 2), c(2, 0), c(4, 0), c(6, 0), c(6, 2), c(8, 0), c(9, 0), c(11, 0), c(13, 0), c(15, 0)]
+    target_cells = [c(0, 0), c(0, 2), c(2, 0), c(4, 0), c(6, 0), c(6, 2), c(8, 0), c(10, 0), c(12, 0), c(14, 0), c(16, 0)]
     for _c in target_cells:
         set_cell_border(
             _c,
@@ -367,23 +382,56 @@ def create_excel_with_columns(filename, columns):
     return f"Файл '{filename}' успешно создан."
 
 
+def create_email_template(filename, params):
+    text = f"<html> \
+<body>\
+ <p>УважаемSEX FIRST_NAME MIDDLE_NAME!</p>\
+ <p>Просим вас оплатить регистрационный взнос за участие в \
+{params['EVENT_NAME']} .\
+  Вы можете использовать QR-код, находящийся в приложенном счете.</p> \
+\
+ <p>\
+    Оплата регистрационного взноса является принятием \
+    <a href='{params['OFERTA_LINK']}'>Публичной Оферты</a>\
+    и согласием c\
+    <a href='https://disk.yandex.ru/i/cxeWm8u2ssl1ww'>политикой обработки персональных данных</a>\
+    . Просим также ознакомиться с шаблоном акта об оказании услуг (в приложенном файле).\
+  </p>\
+\
+ <p>\
+    С уважением, <br> \
+    МЦФПИН <br>\
+    оператор конференции {params['EVENT_NAME']} <br>\
+ </p>\
+</body>\
+</html>"
+    with open(filename, 'w', encoding="utf-8") as f:
+        f.write(text)
+
+    return f"Создан документ-шаблон {filename}"
+
 def create_all_templates():
-    if not os.path.exists(config.TEMP_FOLDER_NAME):
-        os.makedirs(config.TEMP_FOLDER_NAME)
-        print(os.path.exists(config.TEMP_FOLDER_NAME))
-
-    if not os.path.isfile(f'{config.TEMP_FOLDER_NAME}/act.docx'):
-        res1 =create_act_template_doc(f'{config.TEMP_FOLDER_NAME}/act.docx') + '\n'
+    params = load_config_json()
+    if not os.path.exists(_config.TEMP_FOLDER_NAME):
+        os.makedirs(_config.TEMP_FOLDER_NAME)
+        print(os.path.exists(_config.TEMP_FOLDER_NAME))
+    
+    if not os.path.isfile(f'{_config.TEMP_FOLDER_NAME}/act.docx'):
+        res1 =create_act_template_doc(f'{_config.TEMP_FOLDER_NAME}/act.docx', params) + '\n'
     else:
-        res1 = f'Файл {config.TEMP_FOLDER_NAME}/act.docx существует' + '\n'
+        res1 = f'Файл {_config.TEMP_FOLDER_NAME}/act.docx существует' + '\n'
 
-    if not os.path.isfile(f'{config.TEMP_FOLDER_NAME}/bill.docx'):
-        res2 =create_bill_template_doc(f'{config.TEMP_FOLDER_NAME}/bill.docx') + '\n'
+    if not os.path.isfile(f'{_config.TEMP_FOLDER_NAME}/bill.docx'):
+        res2 =create_bill_template_doc(f'{_config.TEMP_FOLDER_NAME}/bill.docx', params) + '\n'
     else:
-        res2 = f'Файл {config.TEMP_FOLDER_NAME}/bill.docx существует' + '\n'
+        res2 = f'Файл {_config.TEMP_FOLDER_NAME}/bill.docx существует' + '\n'
 
-    if not os.path.isfile(config.TB_NAME):
-        res3 = create_excel_with_columns(config.TB_NAME, config.STD_COL_NAME) + '\n'
-    else: res3 = f'Файл {config.TB_NAME} существует' + '\n'
+    if not os.path.isfile(_config.TB_NAME):
+        res3 = create_excel_with_columns(_config.TB_NAME, _config.STD_COL_NAME) + '\n'
+    else: res3 = f'Файл {_config.TB_NAME} существует' + '\n'
 
-    return res1+res2+res3
+    if not os.path.isfile(f'{_config.TEMP_FOLDER_NAME}/email.html'):
+        res4 = create_email_template(f'{_config.TEMP_FOLDER_NAME}/email.html', params) +'\n'
+    else: res4 = f'Файл {_config.TEMP_FOLDER_NAME}/email.html существует' + '\n'
+
+    return res1+res2+res3+res4

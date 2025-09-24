@@ -1,16 +1,9 @@
-"""
-TB_NAME - название таблицы для генерации
-STD_COL_NAME - название колонок в таблице
-TEMP_FOLDER_NAME - название папки с шаблонами
+# -*- coding: utf-8 -*-
+# Автоматически сгенерированный файл конфигурации
 
-PAY_PURPOSE - назначение платежа для банка (желательно не больше 120 символов)
-"""
-
-STD_COL_NAME = ["Фамилия", "Имя", "Отчество", "email", "Сумма"]
-TB_NAME = "participant_list.xlsx"
-
-TEMP_FOLDER_NAME = 'templates'
-FILES_FOLDER_NAME = 'files'
-
-PAY_PURPOSE= 'Рег. взнос за участие в VII Международном симпозиуме "Актуальные проблемы нелинейной волновой физики", 7-13 сентября 2025, г. Москва'
-
+TB_NAME = "2"
+EVENT_NAME = "2"
+EVENT_INFO = "2"
+DATE_INFO = "2"
+PLACE_INFO = "2"
+OFERTA_LINK = "2"
