@@ -210,5 +210,5 @@ __marimo__/
 # My Files
 participant_list.xlsx
 files/
-_config.py
+config.py
 templates/
