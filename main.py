@@ -1,13 +1,13 @@
 import GDocument
 import sys
-from PyQt5.QtWidgets import QApplication, QMessageBox, QComboBox, QCheckBox, QLineEdit, QWidget, QVBoxLayout, QPushButton, QTextEdit, QDialog, QLabel, QHBoxLayout, QDialogButtonBox
+from PyQt5.QtWidgets import QApplication, QMessageBox, QLineEdit, QWidget, QVBoxLayout, QPushButton, QTextEdit, QDialog, QLabel, QHBoxLayout, QDialogButtonBox
 import traceback
-
+import config
 
 class GenerateParametersDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Параметры генерации")
+        self.setWindowTitle("Информация о мероприятии")
         self.setModal(True)
         self.init_ui()
         
@@ -23,7 +23,6 @@ class GenerateParametersDialog(QDialog):
             layout.addLayout(h)
             return edit
 
-        # Отдельные поля (не переопределяем одну и ту же переменную!)
         # self.tb_name_edit   = row("Название таблицы с участниками для рассылки:", "TB_NAME")
         self.event_name_edit= row("Краткое название мероприятия (н-р, NPW-2025):", "EVENT_NAME")
         self.event_info_edit= row("Полное название мероприятия (П.п., «в чём?»):", "EVENT_INFO")
@@ -64,7 +63,7 @@ class GenerateParametersDialog(QDialog):
 class BoolParameterDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Выбор параметра")
+        self.setWindowTitle("Выбор параметров отправки")
         self.setModal(True)
         self.init_ui()
         
@@ -77,17 +76,25 @@ class BoolParameterDialog(QDialog):
         
         # Кнопки для выбора True/False
         button_layout = QHBoxLayout()
+
         
         self.true_btn = QPushButton("Тестовое письмо")
         self.true_btn.clicked.connect(self.true_selected)
         button_layout.addWidget(self.true_btn)
+
+        
         
         self.false_btn = QPushButton("Отправить рассылку")
         self.false_btn.clicked.connect(self.false_selected)
         button_layout.addWidget(self.false_btn)
+
+        test_info_layout = QHBoxLayout()
+        # Подпись под кнопкой
+        self.test_label = QLabel(f"Тестовое письмо будет отправлено на: {config.TO_MAIL_TEST}")
+        test_info_layout.addWidget(self.test_label)
         
         layout.addLayout(button_layout)
-        
+        layout.addLayout(test_info_layout)
         # Кнопки отмены
         button_box = QDialogButtonBox(QDialogButtonBox.Cancel)
         button_box.rejected.connect(self.reject)
@@ -106,16 +113,10 @@ class BoolParameterDialog(QDialog):
         self.selected_value = False
         self.accept()
 
-import sys
-import os
-from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QTextEdit, 
-                             QPushButton, QDialog)
-# from config import Config
-
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Функции с параметрами и история")
+        self.setWindowTitle("DocApp")
         # self.config = Config()
         self.init_ui()
 
@@ -128,11 +129,12 @@ class MainWindow(QWidget):
         layout.addWidget(self.history)
 
         btn1 = QPushButton("Создать шаблоны")
-        btn1.clicked.connect(lambda: self.run_and_log(GDocument.create.create_all_templates))
+        btn1.clicked.connect(self.on_btn1_clicked)
         layout.addWidget(btn1)
 
         btn2 = QPushButton("Сгенерировать")
-        btn2.clicked.connect(self.on_btn2_clicked)
+        btn2.clicked.connect(lambda: self.run_and_log(GDocument.generate.gen_all)
+)
         layout.addWidget(btn2)
 
         btn3 = QPushButton("Рассылка")
@@ -141,23 +143,20 @@ class MainWindow(QWidget):
 
         self.setLayout(layout)
 
-    def on_btn2_clicked(self):
+    def on_btn1_clicked(self):
         dialog = GenerateParametersDialog(self)
         if dialog.exec_() == QDialog.Accepted:
             params = dialog.get_parameters()  # {'TB_NAME': ..., ...}
 
             # Сохраняем JSON
             try:
-                GDocument.save_config_json(params)          # <-- теперь конфиг в JSON
+                GDocument.save_config(params)          # <-- теперь конфиг в JSON
                 self._log(f"Параметры сохранены в config.json: {params}")
             except Exception as e:
                 import traceback
                 self._log(f"Ошибка сохранения config.json: {e}\n{traceback.format_exc()}")
 
-            # Передаём параметры напрямую в генератор (лучший подход)
-            # либо GDocument.generate сам пусть читает load_config_json() внутри.
             self.run_and_log(GDocument.create.create_all_templates)
-            self.run_and_log(GDocument.generate.gen_all)
 
         else:
             self._log("Генерация отменена")

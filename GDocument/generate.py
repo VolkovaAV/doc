@@ -10,10 +10,9 @@ import os
 import sys
 from pathlib import Path
 # Добавляем корневую директорию
-root_path = Path(__file__).parent.parent
-sys.path.insert(0, str(root_path))
 
-import _config
+import config
+from .json_work import *
 
 import pandas as pd
 import numpy as np
@@ -23,7 +22,7 @@ from docx.shared import Mm
 import os
 from typing import Dict, Optional
 
-from .json_work import *
+from .create import resource_path
 
 
 
@@ -67,13 +66,13 @@ def qr_code(df, params):
         PersonInfo = '(участник '+df['LAST_NAME']+' '+df['FIRST_NAME'][0]+'. '+df['MIDDLE_NAME'][0]+'.)'
 
     data=f'ST00012|'\
-        f'Name={_config.NameOrg}|'\
-        f'PersonalAcc={_config.PersonalAcc}|'\
-        f'BankName={_config.BankName}|'\
-        f'BIC={_config.BIC}|'\
-        f'CorrespAcc={_config.CorrespAcc}|'\
-        f'KPP={_config.KPP}|'\
-        f'PayeeINN={_config.PayeeINN}|'\
+        f'Name={config.NameOrg}|'\
+        f'PersonalAcc={config.PersonalAcc}|'\
+        f'BankName={config.BankName}|'\
+        f'BIC={config.BIC}|'\
+        f'CorrespAcc={config.CorrespAcc}|'\
+        f'KPP={config.KPP}|'\
+        f'PayeeINN={config.PayeeINN}|'\
         f'Purpose= {PAY_PURPOSE} {PersonInfo}|'\
         f'SUM={int(df['SUMM'])*100}'
     
@@ -130,10 +129,10 @@ def generate_docx_advanced(
 
 def pdf(df, type):
     # path = f'{_config.FILES_FOLDER_NAME}/'
-    if not os.path.isdir(f'{_config.FILES_FOLDER_NAME}/pdf'):
-        os.makedirs(f'{_config.FILES_FOLDER_NAME}/pdf')
+    if not os.path.isdir(f'{config.FILES_FOLDER_NAME}/pdf'):
+        os.makedirs(f'{config.FILES_FOLDER_NAME}/pdf')
 
-    convert(_config.FILES_FOLDER_NAME+ '/out/' + fname(df, type) + ".docx", _config.FILES_FOLDER_NAME + '/pdf/' + fname(df, type) + ".pdf")
+    convert(config.FILES_FOLDER_NAME+ '/out/' + fname(df, type) + ".docx", config.FILES_FOLDER_NAME + '/pdf/' + fname(df, type) + ".pdf")
     return f'{df['LAST_NAME']} {df['FIRST_NAME']}: генерация завершена \n'
 
 def email(df):
@@ -147,7 +146,7 @@ def email(df):
         text - str - текст письма
     '''
 
-    with open(f"{_config.TEMP_FOLDER_NAME}/email.html", encoding='utf-8') as f:
+    with open(f"{config.TEMP_FOLDER_NAME}/email.html", encoding='utf-8') as f:
         text_template = f.read()
 
     text = text_template.replace('FIRST_NAME', df['FIRST_NAME'])
@@ -170,9 +169,9 @@ def checking_exel(name_table):
 def generate_one_person(df, params):
  
     qr_code(df, params)+ '\n'
-    generate_docx_advanced(f'{_config.TEMP_FOLDER_NAME}/bill.docx', f'{_config.FILES_FOLDER_NAME}/out/{fname(df, 'bill')}.docx', df) + '\n'
+    generate_docx_advanced(f'{config.TEMP_FOLDER_NAME}/bill.docx', f'{config.FILES_FOLDER_NAME}/out/{fname(df, 'bill')}.docx', df) + '\n'
         
-    generate_docx_advanced(f'{_config.TEMP_FOLDER_NAME}/act.docx', f'{_config.FILES_FOLDER_NAME}/out/{fname(df, 'act')}.docx', df) + '\n'
+    generate_docx_advanced(f'{config.TEMP_FOLDER_NAME}/act.docx', f'{config.FILES_FOLDER_NAME}/out/{fname(df, 'act')}.docx', df) + '\n'
   
     pdf(df, 'act')
     res = pdf(df, 'bill')
@@ -185,14 +184,15 @@ def gen_all():
     Вход: 
         df - pd.Series - информация об участнике
     '''
-    params = load_config_json()
-    if not os.path.isdir(f'{_config.FILES_FOLDER_NAME}/out'):
-        os.makedirs(f'{_config.FILES_FOLDER_NAME}/out')
+    params = load_config()
+    print(params)
+    if not os.path.isdir(f'{config.FILES_FOLDER_NAME}/out'):
+        os.makedirs(f'{config.FILES_FOLDER_NAME}/out')
 
-    if not os.path.isdir(f'{_config.FILES_FOLDER_NAME}/qr_code'):
-        os.makedirs(f'{_config.FILES_FOLDER_NAME}/qr_code')
+    if not os.path.isdir(f'{config.FILES_FOLDER_NAME}/qr_code'):
+        os.makedirs(f'{config.FILES_FOLDER_NAME}/qr_code')
 
-    xl = pd.read_excel(_config.TB_NAME, dtype='str')
+    xl = pd.read_excel(config.TB_NAME, dtype='str')
     df1 = pd.DataFrame(xl)
 
     df1 =df1.rename(columns={'Фамилия': 'LAST_NAME', 'Имя': 'FIRST_NAME', 'Отчество': 'MIDDLE_NAME', 'Сумма': 'SUMM'})

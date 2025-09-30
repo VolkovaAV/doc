@@ -1,9 +1,11 @@
 import smtplib
 import pandas as pd
 import numpy as np
+import time
 from .generate import email, fname
 from .json_work import *
-
+import config
+import imaplib
 
 from email.mime.text import MIMEText
 from email.header    import Header
@@ -12,15 +14,33 @@ from email.mime.base import MIMEBase
 from email import encoders
 from email.utils import formatdate
 
-import _config
 
+def find_sent_folder(imap: imaplib.IMAP4_SSL) -> str:
+    """
+    Возвращает название папки "Отправленные" для текущего IMAP-сервера.
+    Если не удалось найти — возвращает 'Sent'.
+    """
+    status, folders = imap.list()
+    if status != "OK":
+        return "Sent"
+
+    for f in folders:
+        decoded = f.decode()
+        # Формат строки: (<атрибуты>) "<разделитель>" "<имя папки>"
+        # Пример: (\\HasNoChildren \\Sent) "/" "Sent"
+        if "\\Sent" in decoded:
+            # имя папки в кавычках в конце строки
+            return decoded.split(' "/" ')[-1].strip('"')
+
+    # fallback, если сервер не метит \Sent
+    return "Sent"
 
 def send_email(df, testing, params):
 
     msg = MIMEMultipart()                                     # Создаем сообщение
-    msg["From"] = _config.FROM_MAIL                                   # Добавляем адрес отправителя
+    msg["From"] = config.FROM_MAIL                                   # Добавляем адрес отправителя
     msg['To'] = df['email']                                       # Добавляем адрес получателя
-    msg["Subject"] = Header(f'Оплата рег.взноса {params['generate_parameters']['EVENT_NAME']}', 'utf-8')        # Пишем тему сообщения
+    msg["Subject"] = Header(f'Оплата рег.взноса {params['EVENT_NAME']}', 'utf-8')        # Пишем тему сообщения
     msg["Date"] = formatdate(localtime=True)                  # Дата сообщения
     msg.attach(MIMEText(email(df), 'html', 'utf-8'))  # Добавляем форматированный текст сообщения
     # Добавляем файл
@@ -45,25 +65,31 @@ def send_email(df, testing, params):
     msg.attach(part)
     
     try:
-        smtp = smtplib.SMTP(_config.SERVER_ADR, 25)                       # Создаем объект для отправки сообщения 
+        smtp = smtplib.SMTP(config.SERVER_ADR, 25)                       # Создаем объект для отправки сообщения 
         smtp.starttls()                                           # Открываем соединение
         smtp.ehlo()
-        smtp.login(_config.FROM_MAIL, _config.FROM_PASSW)                        # Логинимся в свой ящик
-        if not testing:
-            # smtp.sendmail(_config.FROM_MAIL, df['email'], msg.as_string())
-            print('Sent to ', df['email'])
-        smtp.sendmail(_config.FROM_MAIL, _config.TO_MAIL_TEST, msg.as_string())
-        
+        smtp.login(config.FROM_MAIL, config.FROM_PASSW)                        # Логинимся в свой ящик
+        if testing:
+            smtp.sendmail(config.FROM_MAIL, config.TO_MAIL_TEST, msg.as_string())
+        else:
+            smtp.sendmail(config.FROM_MAIL, df['email'], msg.as_string())
+        smtp.quit()
 
-        smtp.quit()   
-        print('Sent')
+        imap = imaplib.IMAP4_SSL(config.IMAP_SERVER, 993)                     # Подключаемся в почтовому серверу
+        imap.login(config.FROM_MAIL, config.FROM_PASSW)                        # Логинимся в свой ящик
+        path = find_sent_folder(imap)
+        imap.select(path)                                       # Переходим в папку Исходящие
+        imap.append(path, None,                                 # Добавляем наше письмо в папку Исходящие
+                    imaplib.Time2Internaldate(time.time()),
+                    msg.as_bytes())
+        
         return 'Письмо отправлено:' + df['email'] + '\n'
     except:
         return df
     
 def send_all(testing):
-    params = load_config_json()
-    xl = pd.read_excel(params['generate_parameters']['TB_NAME'], dtype='str')
+    params = load_config()
+    xl = pd.read_excel(config.TB_NAME, dtype='str')
     df = pd.DataFrame(xl)
 
     df =df.rename(columns={'Фамилия': 'LAST_NAME', 'Имя': 'FIRST_NAME', 'Отчество': 'MIDDLE_NAME', 'Сумма': 'SUMM'})

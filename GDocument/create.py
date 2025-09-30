@@ -3,11 +3,7 @@ import sys
 from pathlib import Path
 from .json_work import *
 
-# Добавляем корневую директорию
-root_path = Path(__file__).parent.parent
-sys.path.insert(0, str(root_path))
-
-import _config
+import config
 import os
 import pandas as pd
 from docx.shared import Pt, Cm
@@ -17,6 +13,16 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
 script_path = os.path.dirname(os.path.abspath(__file__))
+
+
+def resource_path(rel: str) -> Path:
+    """
+    Возвращает путь к ресурсу внутри exe (read-only) или из исходников.
+    В spec мы положили картинку в GDocument/ver_02.png,
+    поэтому используем такой же относительный путь.
+    """
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent.parent))  # .. -> корень проекта
+    return base / rel
 
 def remove_table_borders(table):
     """
@@ -128,7 +134,7 @@ def create_act_template_doc(filename, params):
     run03.underline = True
 
 
-    run3 = p1.add_run(', именуе{{ SEX }} в дальнейшем «Заказчик», с одной стороны, и МЦФПИН в лице ректора Евтушенко Андрея Александровича, действующего на основании Устава, именуемый в дальнейшем «Исполнитель», составили настоящий акт в подтверждение того, что Исполнителем оказаны услуги по организации участия Заказчика в ')
+    run3 = p1.add_run(', именуем{{ SEX }} в дальнейшем «Заказчик», с одной стороны, и МЦФПИН в лице ректора Евтушенко Андрея Александровича, действующего на основании Устава, именуемый в дальнейшем «Исполнитель», составили настоящий акт в подтверждение того, что Исполнителем оказаны услуги по организации участия Заказчика в ')
     run3.font.name = "Times New Roman"
     run3.font.size = Pt(11)
     
@@ -359,11 +365,11 @@ def create_bill_template_doc(filename, params):
     c(0, 0).text = 'Ректор'
     c(0, 0).vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
-    
+    img_path = resource_path('GDocument/ver_02.png')
     c(0, 1).text = ' '
     par = c(0, 1).paragraphs[0]
     run = par.add_run()
-    run.add_picture(f'{script_path}/ver_02.png')
+    run.add_picture(str(img_path))
 
     c(0, 2).text = 'А.А.Евтушенко'
     c(0, 2).vertical_alignment = WD_ALIGN_VERTICAL.CENTER
@@ -411,27 +417,19 @@ def create_email_template(filename, params):
     return f"Создан документ-шаблон {filename}"
 
 def create_all_templates():
-    params = load_config_json()
-    if not os.path.exists(_config.TEMP_FOLDER_NAME):
-        os.makedirs(_config.TEMP_FOLDER_NAME)
-        print(os.path.exists(_config.TEMP_FOLDER_NAME))
+    params = load_config()
+
+    if not os.path.exists(config.TEMP_FOLDER_NAME):
+        os.makedirs(config.TEMP_FOLDER_NAME)
+        print(os.path.exists(config.TEMP_FOLDER_NAME))
     
-    if not os.path.isfile(f'{_config.TEMP_FOLDER_NAME}/act.docx'):
-        res1 =create_act_template_doc(f'{_config.TEMP_FOLDER_NAME}/act.docx', params) + '\n'
-    else:
-        res1 = f'Файл {_config.TEMP_FOLDER_NAME}/act.docx существует' + '\n'
+    res1 =create_act_template_doc(f'{config.TEMP_FOLDER_NAME}/act.docx', params) + '\n'
+    res2 =create_bill_template_doc(f'{config.TEMP_FOLDER_NAME}/bill.docx', params) + '\n'
+    
+    if not os.path.isfile(config.TB_NAME):
+        res3 = create_excel_with_columns(config.TB_NAME, config.STD_COL_NAME) + '\n'
+    else: res3 = f'Файл {config.TB_NAME} существует' + '\n'
 
-    if not os.path.isfile(f'{_config.TEMP_FOLDER_NAME}/bill.docx'):
-        res2 =create_bill_template_doc(f'{_config.TEMP_FOLDER_NAME}/bill.docx', params) + '\n'
-    else:
-        res2 = f'Файл {_config.TEMP_FOLDER_NAME}/bill.docx существует' + '\n'
-
-    if not os.path.isfile(_config.TB_NAME):
-        res3 = create_excel_with_columns(_config.TB_NAME, _config.STD_COL_NAME) + '\n'
-    else: res3 = f'Файл {_config.TB_NAME} существует' + '\n'
-
-    if not os.path.isfile(f'{_config.TEMP_FOLDER_NAME}/email.html'):
-        res4 = create_email_template(f'{_config.TEMP_FOLDER_NAME}/email.html', params) +'\n'
-    else: res4 = f'Файл {_config.TEMP_FOLDER_NAME}/email.html существует' + '\n'
+    res4 = create_email_template(f'{config.TEMP_FOLDER_NAME}/email.html', params) +'\n'
 
     return res1+res2+res3+res4
