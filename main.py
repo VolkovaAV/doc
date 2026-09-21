@@ -151,7 +151,7 @@ class MainWindow(QWidget):
             # Сохраняем JSON
             try:
                 GDocument.save_config(params)          # <-- теперь конфиг в JSON
-                self._log(f"Параметры сохранены в config.json: {params}")
+                self._log(f"Параметры сохранены: {params}")
             except Exception as e:
                 import traceback
                 self._log(f"Ошибка сохранения config.json: {e}\n{traceback.format_exc()}")

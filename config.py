@@ -1,9 +1,8 @@
-FROM_MAIL = "pay.incas@mail.ru"                         # Почта отправителя
-FROM_PASSW = "8sRt0H0xDvqTmCxhNGx8"                      # пароль от почты отправителя
+FROM_MAIL = "volkova.alex@internet.ru"                         # Почта отправителя
+FROM_PASSW = "knzwdEvigQVWCxl3cAPP"                      # пароль от почты отправителя
 SERVER_ADR = "smtp.mail.ru"                               # адрес почтового сервера
 
-TO_MAIL_TEST = 'a.evtushenko@mail.ru'                           # адрес получателя
-
+TO_MAIL_TEST = 'volkova.alex@internet.ru'                           # адрес получателя
 IMAP_SERVER = "imap.mail.ru"
  
 
