@@ -32,7 +32,7 @@
 
 6. Собрать исполняемый файл (необязательно):
 
-    ```pyinstaller --onefile --windowed --name DocApp --add-data "GDocument/ver_02.png;GDocument" --add-data "GDocument/email.html;GDocument" --add-data "config.json;." main.py```
+    ```pyinstaller --onefile --name DocApp --collect-all transliterate --add-data "GDocument/ver_02.png;GDocument" --add-data "config.json;." --add-data "config_local.example.py;." --add-data "GDocument/email.html;GDocument"  main.py```
 
     На macOS/Linux в `--add-data` вместо `;` используется `:`. Если используется `config_local.py`, он попадёт в exe при сборке, поэтому не передавайте такой exe третьим лицам.
 
