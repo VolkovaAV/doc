@@ -2,23 +2,24 @@
 
 1. Открыть config.py и проверить правильность всех постоянных величин:
 
-2. Создать окружение:
+2. Создать окружение (только при первом запуске):
     
-    ```python -m venv venv```
-
+    ```python3 -m venv venv```
 
 3. Активировать окружение:
-    
-    Windows
-    ```.venv\Scripts\activate.bat```
+
+    Windows PowerShell
+
+    ```Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process```
+    ```.\venv\Scripts\Activate.ps1```
     
     Linux
-    ```source .venv/bin/activate``
 
-4. Установить зависисмости
+    ```source .venv/bin/activate```
+
+4. Установить зависисмости (только при первом запуске)
 
     ```pip install -r requirements.txt```
-
 
 5. Собрать исполняемый файл (необязательно):
 
@@ -26,7 +27,7 @@
 
 Как пользоваться:
 
-1. Запустить DocApp.exe (если собирали исполняемый файл) или ```python3 main.py```.
+1. Запустить DocApp.exe (если собирали исполняемый файл) или ```python main.py```.
 2. Нажать кнопку: "Создать шаблоны". Выскочит окно с необходимыми для шаблонов параметрами. Заполнить поля, нажать "ОК".
 
     - Краткое название мероприятия (н-р, NPW-2025).

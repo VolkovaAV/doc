@@ -423,7 +423,7 @@ def create_all_templates():
         os.makedirs(config.TEMP_FOLDER_NAME)
         print(os.path.exists(config.TEMP_FOLDER_NAME))
     
-    res1 =create_act_template_doc(f'{config.TEMP_FOLDER_NAME}/act.docx', params) + '\n'
+    # res1 =create_act_template_doc(f'{config.TEMP_FOLDER_NAME}/act.docx', params) + '\n'
     res2 =create_bill_template_doc(f'{config.TEMP_FOLDER_NAME}/bill.docx', params) + '\n'
     
     if not os.path.isfile(config.TB_NAME):
@@ -432,4 +432,6 @@ def create_all_templates():
 
     res4 = create_email_template(f'{config.TEMP_FOLDER_NAME}/email.html', params) +'\n'
 
-    return res1+res2+res3+res4
+    # return res1+res2+res3+res4
+    return res2+res3+res4
+

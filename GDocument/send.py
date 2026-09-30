@@ -55,24 +55,25 @@ def send_email(df, testing, params):
 
     
 
-    part = MIMEBase('application', "octet-stream")            # Создаем объект для загрузки файла
-    part.set_payload(open('./files/pdf/'+fname(df, type='act')+'.pdf',"rb").read())              # Подключаем файл
-    encoders.encode_base64(part)
+    # part = MIMEBase('application', "octet-stream")            # Создаем объект для загрузки файла
+    # part.set_payload(open('./files/pdf/'+fname(df, type='act')+'.pdf',"rb").read())              # Подключаем файл
+    # encoders.encode_base64(part)
     
     
-    part.add_header('Content-Disposition',
-                    f'attachment; filename="{fname(df, type='act')}.pdf"')
-    msg.attach(part)
+    # part.add_header('Content-Disposition',
+    #                 f'attachment; filename="{fname(df, type='act')}.pdf"')
+    # msg.attach(part)
     
     try:
         smtp = smtplib.SMTP(config.SERVER_ADR, 25)                       # Создаем объект для отправки сообщения 
         smtp.starttls()                                           # Открываем соединение
         smtp.ehlo()
         smtp.login(config.FROM_MAIL, config.FROM_PASSW)                        # Логинимся в свой ящик
-        if testing:
-            smtp.sendmail(config.FROM_MAIL, config.TO_MAIL_TEST, msg.as_string())
-        else:
-            smtp.sendmail(config.FROM_MAIL, df['email'], msg.as_string())
+        # if testing:
+        #     smtp.sendmail(config.FROM_MAIL, config.TO_MAIL_TEST, msg.as_string())
+        # else:
+        #     smtp.sendmail(config.FROM_MAIL, config.TO_MAIL_TEST, msg.as_string())
+        #     smtp.sendmail(config.FROM_MAIL, df['email'], msg.as_string())
         smtp.quit()
 
         imap = imaplib.IMAP4_SSL(config.IMAP_SERVER, 993)                     # Подключаемся в почтовому серверу
@@ -104,6 +105,7 @@ def send_all(testing):
         res = ''
         # return 1
         send_email(df.iloc[person_ID], testing, params)
+        time.sleep(0.5)
     return "Отправка завершена!"
 
 

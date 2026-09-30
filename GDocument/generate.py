@@ -171,9 +171,9 @@ def generate_one_person(df, params):
     qr_code(df, params)+ '\n'
     generate_docx_advanced(f'{config.TEMP_FOLDER_NAME}/bill.docx', f'{config.FILES_FOLDER_NAME}/out/{fname(df, 'bill')}.docx', df) + '\n'
         
-    generate_docx_advanced(f'{config.TEMP_FOLDER_NAME}/act.docx', f'{config.FILES_FOLDER_NAME}/out/{fname(df, 'act')}.docx', df) + '\n'
+    # generate_docx_advanced(f'{config.TEMP_FOLDER_NAME}/act.docx', f'{config.FILES_FOLDER_NAME}/out/{fname(df, 'act')}.docx', df) + '\n'
   
-    pdf(df, 'act')
+    # pdf(df, 'act')
     res = pdf(df, 'bill')
 
     return res
@@ -207,6 +207,7 @@ def gen_all():
     res = ''
     # print(df1)
     for person_ID in range(len(df1)):
+        print(df1.iloc[person_ID])
         generate_one_person(df1.iloc[person_ID], params)
         
     res += 'Генерация завершена!' 
