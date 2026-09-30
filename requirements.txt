@@ -1,6 +1,7 @@
 altgraph==0.17.4
 babel>=2.13.0
 colorama==0.4.6
+DAWG2-Python==0.9.0
 docopt==0.6.2
 docx2pdf==0.1.8
 docxcompose==1.4.0
@@ -18,6 +19,8 @@ pefile==2023.2.7
 pillow==11.3.0
 pyinstaller==6.16.0
 pyinstaller-hooks-contrib==2025.9
+pymorphy3==2.0.6
+pymorphy3-dicts-ru==2.4.417150.4580142
 PyQt5==5.15.11
 PyQt5-Qt5==5.15.2
 PyQt5_sip==12.17.0

@@ -109,7 +109,7 @@ def create_act_template_doc(filename, params):
     run1.font.bold = True
 
     # --- МЕРОПРИЯТИЕ ---
-    run2 = p.add_run(params['EVENT_INFO'])
+    run2 = p.add_run(params['EVENT_INFO_PREP'])
     run2.font.name = "Times New Roman"
     run2.font.size = Pt(11)
     run2.font.bold = True
@@ -130,7 +130,7 @@ def create_act_template_doc(filename, params):
     run3.font.name = "Times New Roman"
     run3.font.size = Pt(11)
     
-    run4 = p1.add_run(params['EVENT_INFO'])
+    run4 = p1.add_run(params['EVENT_INFO_PREP'])
     run4.font.name = "Times New Roman"
     run4.font.size = Pt(11)
     # run4.font.highlight_color = WD_COLOR_INDEX.YELLOW  # жёлтое выделение
@@ -288,7 +288,7 @@ def create_bill_template_doc(filename, params):
 
     c(10, 0).text = " "
     p = c(10, 0).paragraphs[0]
-    run = p.add_run(params['EVENT_INFO'])
+    run = p.add_run(params['EVENT_INFO_PREP'])
     # run.font.highlight_color = WD_COLOR_INDEX.YELLOW  # жёлтое выделение
 
     c(11, 0).text = " "

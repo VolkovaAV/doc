@@ -7,7 +7,10 @@ APP_NAME = "DocApp"
 CONFIG_NAME = "config.json"
 
 # Параметры мероприятия, которые вводятся в окне «Создать шаблоны»
-EVENT_KEYS = ('EVENT_NAME', 'EVENT_INFO', 'DATE_INFO', 'PLACE_INFO', 'OFERTA_LINK')
+# EVENT_INFO — полное название в именительном падеже,
+# EVENT_INFO_PREP / EVENT_INFO_GEN — оно же в предложном и родительном падежах
+EVENT_KEYS = ('EVENT_NAME', 'EVENT_INFO', 'EVENT_INFO_PREP', 'EVENT_INFO_GEN',
+              'DATE_INFO', 'PLACE_INFO', 'OFERTA_LINK')
 
 
 def resource_path(rel: str) -> Path:

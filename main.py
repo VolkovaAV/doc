@@ -27,10 +27,20 @@ class GenerateParametersDialog(QDialog):
             return edit
 
         self.event_name_edit= row("Краткое название мероприятия (н-р, NPW-2025):", "EVENT_NAME")
-        self.event_info_edit= row("Полное название мероприятия (П.п., «в чём?»):", "EVENT_INFO")
+        self.event_info_edit= row("Полное название мероприятия (И.п., «что?», н-р, Научная школа):", "EVENT_INFO")
+        self.event_prep_edit= row("  в предложном падеже («в чём?»):", "EVENT_INFO_PREP")
+        self.event_gen_edit = row("  в родительном падеже («чего?»):", "EVENT_INFO_GEN")
         self.date_info_edit = row("Даты проведения (н-р, 7–13 сентября):", "DATE_INFO")
         self.place_info_edit= row("Место проведения (н-р, г. Москва):", "PLACE_INFO")
         self.oferta_link_edit=row("Ссылка на Публичную оферту:", "OFERTA_LINK")
+
+        # Старый config.json: в EVENT_INFO лежало название уже в предложном падеже
+        if self.defaults.get('EVENT_INFO') and not self.defaults.get('EVENT_INFO_PREP'):
+            self.event_prep_edit.setText(self.defaults['EVENT_INFO'])
+            self.event_info_edit.clear()
+
+        # Падежи пересчитываются при вводе полного названия, их можно поправить вручную
+        self.event_info_edit.textEdited.connect(self.update_cases)
 
         # Кнопки
         btn_layout = QHBoxLayout()
@@ -44,6 +54,15 @@ class GenerateParametersDialog(QDialog):
 
         self.setLayout(layout)
 
+    def update_cases(self, text):
+        try:
+            cases = GDocument.event_cases(text.strip())
+        except Exception as e:  # словари pymorphy3 не найдены и т.п. — вводим вручную
+            self.event_prep_edit.setPlaceholderText(f"Не удалось просклонять: {e}")
+            return
+        self.event_prep_edit.setText(cases['EVENT_INFO_PREP'])
+        self.event_gen_edit.setText(cases['EVENT_INFO_GEN'])
+
     def on_ok(self):
         # Все поля попадают в шаблоны, поэтому пустые не допускаем
         if any(not v for v in self.get_parameters().values()):
@@ -56,6 +75,8 @@ class GenerateParametersDialog(QDialog):
         return {
             'EVENT_NAME': self.event_name_edit.text().strip(),
             'EVENT_INFO': self.event_info_edit.text().strip(),
+            'EVENT_INFO_PREP': self.event_prep_edit.text().strip(),
+            'EVENT_INFO_GEN': self.event_gen_edit.text().strip(),
             'DATE_INFO': self.date_info_edit.text().strip(),
             'PLACE_INFO': self.place_info_edit.text().strip(),
             'OFERTA_LINK': self.oferta_link_edit.text().strip(),
