@@ -1,6 +1,5 @@
 from docx import Document
-import sys
-from pathlib import Path
+import html
 from .json_work import *
 
 import config
@@ -12,17 +11,6 @@ from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-script_path = os.path.dirname(os.path.abspath(__file__))
-
-
-def resource_path(rel: str) -> Path:
-    """
-    Возвращает путь к ресурсу внутри exe (read-only) или из исходников.
-    В spec мы положили картинку в GDocument/ver_02.png,
-    поэтому используем такой же относительный путь.
-    """
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent.parent))  # .. -> корень проекта
-    return base / rel
 
 def remove_table_borders(table):
     """
@@ -237,7 +225,7 @@ def create_bill_template_doc(filename, params):
 
     # --- Заполнение текстом ---
     # Строка 1 (без объединений в 1–2 столбцах)
-    c(0, 0).text = "МЦФПИН"
+    c(0, 0).text = config.NameOrg
     c(0, 0).vertical_alignment = WD_ALIGN_VERTICAL.BOTTOM
     
 
@@ -247,7 +235,7 @@ def create_bill_template_doc(filename, params):
     run.font.italic = True
     run.font.size = Pt(10)
 
-    c(0, 2).text = "5260054053/526001001"
+    c(0, 2).text = f"{config.PayeeINN}/{config.KPP}"
     c(1, 2).text = " "
     p = c(1, 2).paragraphs[0]
     run = p.add_run("ИНН/КПП")
@@ -256,14 +244,14 @@ def create_bill_template_doc(filename, params):
     
 
     # Строка 2 (ячейка 1–2 объединена, писать в левую верхнюю)
-    c(2, 0).text = "40703810942000000672"
+    c(2, 0).text = config.PersonalAcc
     c(3, 0).text = " "
     p = c(3, 0).paragraphs[0]
     run = p.add_run("Номер счета получателя платежа")
     run.font.italic = True
     run.font.size = Pt(10)
     
-    c(4, 0).text = "ВОЛГО-ВЯТСКИЙ БАНК ПАО СБЕРБАНК"
+    c(4, 0).text = config.BankName
 
     c(5, 0).text = " "
     p = c(5, 0).paragraphs[0]
@@ -271,8 +259,8 @@ def create_bill_template_doc(filename, params):
     run.font.italic = True
     run.font.size = Pt(10)
 
-    c(6, 0).text = "042202603"
-    c(6, 2).text = "30101810900000000603"
+    c(6, 0).text = config.BIC
+    c(6, 2).text = config.CorrespAcc
 
     c(7, 0).text = " "
     p = c(7, 0).paragraphs[0]
@@ -362,7 +350,7 @@ def create_bill_template_doc(filename, params):
     table1= doc.add_table(rows=1, cols=3)
     c = lambda r, col: table1.cell(r, col)
 
-    c(0, 0).text = 'Ректор'
+    c(0, 0).text = config.HeadPosition
     c(0, 0).vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
     img_path = resource_path('GDocument/ver_02.png')
@@ -371,7 +359,7 @@ def create_bill_template_doc(filename, params):
     run = par.add_run()
     run.add_picture(str(img_path))
 
-    c(0, 2).text = 'А.А.Евтушенко'
+    c(0, 2).text = config.HeadName
     c(0, 2).vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
 
@@ -381,7 +369,7 @@ def create_bill_template_doc(filename, params):
 
 def create_excel_with_columns(filename, columns):
     """
-    Создаёт пустой Excel-файл с нужными столбцамиП, если такого файла ещё нет.
+    Создаёт пустой Excel-файл с нужными столбцами.
     """
     df = pd.DataFrame(columns=columns)
     df.to_excel(filename, sheet_name="Лист1", index=False)
@@ -389,6 +377,8 @@ def create_excel_with_columns(filename, columns):
 
 
 def create_email_template(filename, params):
+    # экранируем пользовательский ввод, чтобы он не ломал HTML письма
+    params = {k: html.escape(str(v), quote=True) for k, v in params.items()}
     text = f"<html> \
 <body>\
  <p>УважаемSEX FIRST_NAME MIDDLE_NAME!</p>\
@@ -401,12 +391,12 @@ def create_email_template(filename, params):
     <a href='{params['OFERTA_LINK']}'>Публичной Оферты</a>\
     и согласием c\
     <a href='https://disk.yandex.ru/i/cxeWm8u2ssl1ww'>политикой обработки персональных данных</a>\
-    . Просим также ознакомиться с шаблоном акта об оказании услуг (в приложенном файле).\
+    .\
   </p>\
 \
  <p>\
     С уважением, <br> \
-    МЦФПИН <br>\
+    {config.NameOrg} <br>\
     оператор конференции {params['EVENT_NAME']} <br>\
  </p>\
 </body>\
@@ -418,11 +408,10 @@ def create_email_template(filename, params):
 
 def create_all_templates():
     params = load_config()
+    require_event_params(params)
 
-    if not os.path.exists(config.TEMP_FOLDER_NAME):
-        os.makedirs(config.TEMP_FOLDER_NAME)
-        print(os.path.exists(config.TEMP_FOLDER_NAME))
-    
+    os.makedirs(config.TEMP_FOLDER_NAME, exist_ok=True)
+
     # res1 =create_act_template_doc(f'{config.TEMP_FOLDER_NAME}/act.docx', params) + '\n'
     res2 =create_bill_template_doc(f'{config.TEMP_FOLDER_NAME}/bill.docx', params) + '\n'
     

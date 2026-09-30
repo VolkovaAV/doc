@@ -1,33 +1,21 @@
-import json
-from pathlib import Path
-
-# CONFIG_PATH = Path("config.json")
-
-# def save_config_json(params: dict, filename: str = None):
-#     """Сохраняет словарь параметров в JSON."""
-#     path = Path(filename) if filename else CONFIG_PATH
-#     with open(path, "w", encoding="utf-8") as f:
-#         json.dump(params, f, ensure_ascii=False, indent=2)
-
-# def load_config_json(filename: str = None, defaults: dict = None) -> dict:
-#     """Загружает параметры из JSON. Если файла нет — возвращает defaults или {}."""
-#     path = Path(filename) if filename else CONFIG_PATH
-#     if not path.exists():
-#         return dict(defaults) if defaults else {}
-#     with open(path, "r", encoding="utf-8") as f:
-#         return json.load(f)
-    
 import os
-
-import sys, json
+import sys
+import json
 from pathlib import Path
 
 APP_NAME = "DocApp"
 CONFIG_NAME = "config.json"
 
+# Параметры мероприятия, которые вводятся в окне «Создать шаблоны»
+EVENT_KEYS = ('EVENT_NAME', 'EVENT_INFO', 'DATE_INFO', 'PLACE_INFO', 'OFERTA_LINK')
+
+
 def resource_path(rel: str) -> Path:
-    """Файлы, вшитые в exe (read-only): дефолтный config.json, картинки и т.п."""
-    base = Path(getattr(sys, "_MEIPASS", Path.cwd()))
+    """
+    Путь к ресурсу, вшитому в exe (read-only), или к файлу в корне проекта
+    при запуске из исходников.
+    """
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
     return base / rel
 
 def user_config_dir() -> Path:
@@ -55,12 +43,25 @@ def load_config() -> dict:
         if default_cfg_path.exists():
             ucfg.write_text(default_cfg_path.read_text(encoding="utf-8"), encoding="utf-8")
         else:
-            # или создаём пустой/минимальный конфиг, если дефолта нет
-            ucfg.write_text(json.dumps({"version": 1}, ensure_ascii=False, indent=2), encoding="utf-8")
+            ucfg.write_text(json.dumps({}, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # читаем рабочий конфиг
     with ucfg.open("r", encoding="utf-8") as f:
-        return json.load(f)
+        cfg = json.load(f)
+
+    # отсутствующие ключи заполняем пустыми строками, чтобы не падать с KeyError
+    for key in EVENT_KEYS:
+        cfg.setdefault(key, "")
+    return cfg
+
+def require_event_params(params: dict) -> None:
+    """Проверяет, что параметры мероприятия заполнены."""
+    missing = [k for k in EVENT_KEYS if not str(params.get(k, "")).strip()]
+    if missing:
+        raise ValueError(
+            "Не заполнены параметры мероприятия: " + ", ".join(missing)
+            + ". Нажмите «Создать шаблоны» и заполните все поля."
+        )
 
 def save_config(cfg: dict) -> None:
     """Сохраняет рабочий конфиг (read-write место)."""
@@ -70,4 +71,3 @@ def save_config(cfg: dict) -> None:
     tmp = ucfg.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(ucfg)
-

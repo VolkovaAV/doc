@@ -1,8 +1,8 @@
+import os
+import re
 import smtplib
-import pandas as pd
-import numpy as np
 import time
-from .generate import email, fname
+from .generate import email, fname, load_participants, PDF_DIR
 from .json_work import *
 import config
 import imaplib
@@ -25,87 +25,89 @@ def find_sent_folder(imap: imaplib.IMAP4_SSL) -> str:
         return "Sent"
 
     for f in folders:
-        decoded = f.decode()
-        # Формат строки: (<атрибуты>) "<разделитель>" "<имя папки>"
-        # Пример: (\\HasNoChildren \\Sent) "/" "Sent"
+        decoded = f.decode(errors="replace")
+        # Формат строки: (<атрибуты>) "<разделитель>" <имя папки>
+        # Пример: (\HasNoChildren \Sent) "/" "Sent"  или  (\Sent) "|" Sent
         if "\\Sent" in decoded:
-            # имя папки в кавычках в конце строки
-            return decoded.split(' "/" ')[-1].strip('"')
+            m = re.match(r'\((?P<attrs>[^)]*)\)\s+(?:"[^"]*"|NIL)\s+(?P<name>.+)$', decoded)
+            if m:
+                name = m.group("name").strip()
+                # имя папки передаём серверу в кавычках, как оно пришло
+                return name if name.startswith('"') else f'"{name}"'
 
     # fallback, если сервер не метит \Sent
     return "Sent"
 
-def send_email(df, testing, params):
+def build_message(df, testing, params):
+    """Собирает письмо со счетом для одного участника."""
+    to_addr = config.TO_MAIL_TEST if testing else df['email']
 
     msg = MIMEMultipart()                                     # Создаем сообщение
-    msg["From"] = config.FROM_MAIL                                   # Добавляем адрес отправителя
-    msg['To'] = df['email']                                       # Добавляем адрес получателя
-    msg["Subject"] = Header(f'Оплата рег.взноса {params['EVENT_NAME']}', 'utf-8')        # Пишем тему сообщения
+    msg["From"] = config.FROM_MAIL                            # Добавляем адрес отправителя
+    msg['To'] = to_addr                                       # Добавляем адрес получателя
+    msg["Subject"] = Header(f"Оплата рег.взноса {params['EVENT_NAME']}", 'utf-8')  # Пишем тему сообщения
     msg["Date"] = formatdate(localtime=True)                  # Дата сообщения
-    msg.attach(MIMEText(email(df), 'html', 'utf-8'))  # Добавляем форматированный текст сообщения
+    msg.attach(MIMEText(email(df), 'html', 'utf-8'))          # Добавляем форматированный текст сообщения
+
     # Добавляем файл
-    part = MIMEBase('application', "octet-stream")            # Создаем объект для загрузки файла
-    part.set_payload(open('./files/pdf/'+fname(df, type='bill')+'.pdf',"rb").read())              # Подключаем файл
+    bill_name = fname(df, type='bill') + '.pdf'
+    part = MIMEBase('application', "pdf")                     # Создаем объект для загрузки файла
+    with open(os.path.join(PDF_DIR, bill_name), "rb") as f:
+        part.set_payload(f.read())                            # Подключаем файл
     encoders.encode_base64(part)
-    
-    
-    part.add_header('Content-Disposition',
-                    f'attachment; filename="{fname(df, type='bill')+'.pdf'}"')
+    part.add_header('Content-Disposition', 'attachment', filename=bill_name)
     msg.attach(part)                                          # Добавляем файл в письмо
 
-    
+    return msg, to_addr
 
-    # part = MIMEBase('application', "octet-stream")            # Создаем объект для загрузки файла
-    # part.set_payload(open('./files/pdf/'+fname(df, type='act')+'.pdf',"rb").read())              # Подключаем файл
-    # encoders.encode_base64(part)
-    
-    
-    # part.add_header('Content-Disposition',
-    #                 f'attachment; filename="{fname(df, type='act')}.pdf"')
-    # msg.attach(part)
-    
-    try:
-        smtp = smtplib.SMTP(config.SERVER_ADR, 25)                       # Создаем объект для отправки сообщения 
-        smtp.starttls()                                           # Открываем соединение
-        smtp.ehlo()
-        smtp.login(config.FROM_MAIL, config.FROM_PASSW)                        # Логинимся в свой ящик
-        # if testing:
-        #     smtp.sendmail(config.FROM_MAIL, config.TO_MAIL_TEST, msg.as_string())
-        # else:
-        #     smtp.sendmail(config.FROM_MAIL, config.TO_MAIL_TEST, msg.as_string())
-        #     smtp.sendmail(config.FROM_MAIL, df['email'], msg.as_string())
-        smtp.quit()
-
-        imap = imaplib.IMAP4_SSL(config.IMAP_SERVER, 993)                     # Подключаемся в почтовому серверу
-        imap.login(config.FROM_MAIL, config.FROM_PASSW)                        # Логинимся в свой ящик
-        path = find_sent_folder(imap)
-        imap.select(path)                                       # Переходим в папку Исходящие
-        imap.append(path, None,                                 # Добавляем наше письмо в папку Исходящие
-                    imaplib.Time2Internaldate(time.time()),
-                    msg.as_bytes())
-        
-        return 'Письмо отправлено:' + df['email'] + '\n'
-    except:
-        return df
-    
 def send_all(testing):
+    """
+    Рассылает счета всем участникам из таблицы.
+    testing=True — все письма уходят на config.TO_MAIL_TEST.
+    """
+    if not config.FROM_PASSW:
+        raise RuntimeError("Не задан пароль почты: создайте config_local.py (см. config_local.example.py) "
+                           "или задайте переменную окружения DOCAPP_MAIL_PASSWORD.")
+
     params = load_config()
-    xl = pd.read_excel(config.TB_NAME, dtype='str')
-    df = pd.DataFrame(xl)
+    require_event_params(params)
+    df = load_participants()
 
-    df =df.rename(columns={'Фамилия': 'LAST_NAME', 'Имя': 'FIRST_NAME', 'Отчество': 'MIDDLE_NAME', 'Сумма': 'SUMM'})
-    
-    df['SEX'] = np.where(df['MIDDLE_NAME'].str.endswith('на'), 'ая',np.where(df['MIDDLE_NAME'].str.endswith('ич'), 'ый','ый(ая)')
-)
+    # Сначала собираем все письма: если какого-то PDF нет, не отправляем ничего
+    messages = [build_message(df.iloc[person_ID], testing, params) for person_ID in range(len(df))]
 
-    df['F_NAME'] = df['FIRST_NAME'].str[0] + '.'
-    df['M_NAME'] = df['MIDDLE_NAME'].str[0] + '.'
+    sent, failed = [], []
+    smtp = smtplib.SMTP_SSL(config.SERVER_ADR, config.SMTP_PORT, timeout=60)
+    imap = imaplib.IMAP4_SSL(config.IMAP_SERVER, config.IMAP_PORT, timeout=60)
+    try:
+        smtp.login(config.FROM_MAIL, config.FROM_PASSW)       # Логинимся в свой ящик
+        imap.login(config.FROM_MAIL, config.FROM_PASSW)
+        sent_folder = find_sent_folder(imap)
 
-    for person_ID in range(len(df)):
-        res = ''
-        # return 1
-        send_email(df.iloc[person_ID], testing, params)
-        time.sleep(0.5)
-    return "Отправка завершена!"
+        for msg, to_addr in messages:
+            try:
+                smtp.sendmail(config.FROM_MAIL, to_addr, msg.as_string())
+            except smtplib.SMTPException as e:
+                failed.append(f"{to_addr}: {e}")
+                continue
 
+            # Кладем копию письма в папку «Отправленные»
+            status, _ = imap.append(sent_folder, '\\Seen',
+                                    imaplib.Time2Internaldate(time.time()),
+                                    msg.as_bytes())
+            note = '' if status == 'OK' else ' (не удалось сохранить в «Отправленные»)'
+            sent.append(f"Письмо отправлено: {to_addr}{note}")
+            time.sleep(config.SEND_DELAY)
+    finally:
+        try:
+            smtp.quit()
+        except smtplib.SMTPException:
+            pass
+        try:
+            imap.logout()
+        except imaplib.IMAP4.error:
+            pass
 
+    lines = sent + [f"ОШИБКА отправки {x}" for x in failed]
+    lines.append(f"Отправка завершена: отправлено {len(sent)}, ошибок {len(failed)}.")
+    return '\n'.join(lines)
