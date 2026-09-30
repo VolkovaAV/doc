@@ -8,6 +8,7 @@ from num2words import num2words
 
 import html
 import os
+from string import Template
 from typing import Dict, Optional
 
 import config
@@ -175,15 +176,19 @@ def email(df):
     with open(os.path.join(config.TEMP_FOLDER_NAME, "email.html"), encoding='utf-8') as f:
         text_template = f.read()
 
-    text = text_template.replace('FIRST_NAME', html.escape(df['FIRST_NAME']))
+    if '${FIRST_NAME}' not in text_template:
+        raise ValueError("Шаблон письма устарел: нажмите «Создать шаблоны», чтобы пересоздать templates/email.html")
+
     if not has_middle_name(df) or len(df['MIDDLE_NAME']) < 2:
-        text = text.replace('MIDDLE_NAME', html.escape(df['LAST_NAME']))
+        middle = df['LAST_NAME']
     else:
-        text = text.replace('MIDDLE_NAME', html.escape(df['MIDDLE_NAME']))
+        middle = df['MIDDLE_NAME']
 
-    text = text.replace('SEX', df['SEX'])
-
-    return text
+    return Template(text_template).safe_substitute(
+        SEX=df['SEX'],
+        FIRST_NAME=html.escape(df['FIRST_NAME']),
+        MIDDLE_NAME=html.escape(middle),
+    )
 
 def generate_one_person(df, params):
     qr_code(df, params)

@@ -32,7 +32,7 @@
 
 6. Собрать исполняемый файл (необязательно):
 
-    ```pyinstaller --onefile --windowed --name DocApp --add-data "GDocument/ver_02.png;GDocument" --add-data "config.json;." main.py```
+    ```pyinstaller --onefile --windowed --name DocApp --add-data "GDocument/ver_02.png;GDocument" --add-data "GDocument/email.html;GDocument" --add-data "config.json;." main.py```
 
     На macOS/Linux в `--add-data` вместо `;` используется `:`. Если используется `config_local.py`, он попадёт в exe при сборке, поэтому не передавайте такой exe третьим лицам.
 
@@ -61,8 +61,12 @@
 
     Дополнительно доступны: {{ SEX }}, {{ SUMM_NAME }}, {{ F_NAME }}, {{ M_NAME }}
 
-    Ключи в шаблоне письма (без скобок): SEX, FIRST_NAME, MIDDLE_NAME
+    Ключи в шаблоне письма: ${EVENT_NAME}, ${OFERTA_LINK}, ${ORG_NAME},
+    ${SEX}, ${FIRST_NAME}, ${MIDDLE_NAME}
     ```
+
+    Текст письма хранится в `GDocument/email.html` - его можно править как обычный HTML.
+    После изменения нажмите "Создать шаблоны", чтобы обновить `templates/email.html`.
 
 3. Заполнить данные участников. В файле `participant_list.xlsx` необходимо заполнить следующие столбцы:
     * Фамилия, Имя (обязательно), Отчество (если есть)

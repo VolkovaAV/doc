@@ -1,5 +1,7 @@
 from docx import Document
 import html
+import re
+from string import Template
 from .json_work import *
 
 import config
@@ -10,6 +12,8 @@ from docx.enum.text import WD_PARAGRAPH_ALIGNMENT, WD_COLOR_INDEX
 from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+
+EMAIL_TEMPLATE = 'GDocument/email.html'  # исходный шаблон письма
 
 
 def remove_table_borders(table):
@@ -377,30 +381,19 @@ def create_excel_with_columns(filename, columns):
 
 
 def create_email_template(filename, params):
+    """
+    Читает шаблон письма GDocument/email.html, подставляет параметры мероприятия
+    и сохраняет результат в filename. Поля участника (${SEX}, ${FIRST_NAME},
+    ${MIDDLE_NAME}) остаются в тексте и заполняются при рассылке.
+    """
+    text = resource_path(EMAIL_TEMPLATE).read_text(encoding='utf-8')
+    text = re.sub(r'<!--.*?-->\s*', '', text, flags=re.S)  # служебные комментарии не нужны в письме
+
     # экранируем пользовательский ввод, чтобы он не ломал HTML письма
-    params = {k: html.escape(str(v), quote=True) for k, v in params.items()}
-    text = f"<html> \
-<body>\
- <p>УважаемSEX FIRST_NAME MIDDLE_NAME!</p>\
- <p>Просим вас оплатить регистрационный взнос за участие в \
-{params['EVENT_NAME']} .\
-  Вы можете использовать QR-код, находящийся в приложенном счете.</p> \
-\
- <p>\
-    Оплата регистрационного взноса является принятием \
-    <a href='{params['OFERTA_LINK']}'>Публичной Оферты</a>\
-    и согласием c\
-    <a href='https://disk.yandex.ru/i/cxeWm8u2ssl1ww'>политикой обработки персональных данных</a>\
-    .\
-  </p>\
-\
- <p>\
-    С уважением, <br> \
-    {config.NameOrg} <br>\
-    оператор конференции {params['EVENT_NAME']} <br>\
- </p>\
-</body>\
-</html>"
+    values = {k: html.escape(str(v), quote=True) for k, v in params.items()}
+    values['ORG_NAME'] = html.escape(config.NameOrg)
+
+    text = Template(text).safe_substitute(values)
     with open(filename, 'w', encoding="utf-8") as f:
         f.write(text)
 
