@@ -6,8 +6,6 @@ FROM_MAIL = "pay.incas@mail.ru"
 
 SERVER_ADR = "smtp.mail.ru"                               # адрес почтового сервера (SMTP)
 SMTP_PORT = 465                                           # SMTP over SSL
-IMAP_SERVER = "imap.mail.ru"
-IMAP_PORT = 993
 
 SEND_DELAY = 0.5                                          # пауза между письмами, сек
 
