@@ -81,6 +81,7 @@ def load_participants():
         raise ValueError(f"В '{config.TB_NAME}' не найден корректный email (строки: {rows})")
     notes = [f"Строка {i + 2}: в ячейке email несколько адресов, выбран {addr}"
              for i, (addr, count) in parsed.items() if count > 1]
+    df['EMAIL_RAW'] = df['email']  # как было записано в таблице (для отчета)
     df['email'] = parsed.map(lambda x: x[0])
 
     bad_summ = ~df['SUMM'].str.fullmatch(r'\d+')
