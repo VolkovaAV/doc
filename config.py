@@ -1,9 +1,6 @@
-import os
-
-FROM_MAIL = "pay.incas@mail.ru"                          # Почта отправителя
-# Пароль НЕ хранится в репозитории: задайте его в config_local.py
-# (см. config_local.example.py) или в переменной окружения DOCAPP_MAIL_PASSWORD
-FROM_PASSW = os.getenv("DOCAPP_MAIL_PASSWORD", "")
+# Логин по умолчанию для окна входа. Пароль программа запрашивает
+# при каждом запуске рассылки и нигде не сохраняет.
+FROM_MAIL = "pay.incas@mail.ru"
 
 SERVER_ADR = "smtp.mail.ru"                               # адрес почтового сервера (SMTP)
 SMTP_PORT = 465                                           # SMTP over SSL
@@ -30,9 +27,3 @@ FILES_FOLDER_NAME = 'files'
 
 STD_COL_NAME = ["Фамилия", "Имя", "Отчество", "email", "Сумма"]
 TB_NAME = "participant_list.xlsx"
-
-# Локальные переопределения (пароль и т.п.), файл не хранится в git
-try:
-    from config_local import *  # noqa: F401,F403
-except ImportError:
-    pass

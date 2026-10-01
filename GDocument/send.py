@@ -38,12 +38,12 @@ def find_sent_folder(imap: imaplib.IMAP4_SSL) -> str:
     # fallback, если сервер не метит \Sent
     return "Sent"
 
-def build_message(df, testing, params):
+def build_message(df, testing, params, from_addr):
     """Собирает письмо со счетом для одного участника."""
     to_addr = config.TO_MAIL_TEST if testing else df['email']
 
     msg = MIMEMultipart()                                     # Создаем сообщение
-    msg["From"] = config.FROM_MAIL                            # Добавляем адрес отправителя
+    msg["From"] = from_addr                                   # Добавляем адрес отправителя
     msg['To'] = to_addr                                       # Добавляем адрес получателя
     msg["Subject"] = Header(f"Оплата рег.взноса {params['EVENT_NAME']}", 'utf-8')  # Пишем тему сообщения
     msg["Date"] = formatdate(localtime=True)                  # Дата сообщения
@@ -60,33 +60,37 @@ def build_message(df, testing, params):
 
     return msg, to_addr
 
-def send_all(testing):
+def send_all(testing, login, password):
     """
     Рассылает счета всем участникам из таблицы.
     testing=True — все письма уходят на config.TO_MAIL_TEST.
+    login, password — учетные данные почты-отправителя (вводятся в окне входа).
     """
-    if not config.FROM_PASSW:
-        raise RuntimeError("Не задан пароль почты: создайте config_local.py (см. config_local.example.py) "
-                           "или задайте переменную окружения DOCAPP_MAIL_PASSWORD.")
+    if not login or not password:
+        raise ValueError("Не указан логин или пароль почты.")
 
     params = load_config()
     require_event_params(params)
     df = load_participants()
 
     # Сначала собираем все письма: если какого-то PDF нет, не отправляем ничего
-    messages = [build_message(df.iloc[person_ID], testing, params) for person_ID in range(len(df))]
+    messages = [build_message(df.iloc[person_ID], testing, params, login) for person_ID in range(len(df))]
 
     sent, failed = [], []
     smtp = smtplib.SMTP_SSL(config.SERVER_ADR, config.SMTP_PORT, timeout=60)
     imap = imaplib.IMAP4_SSL(config.IMAP_SERVER, config.IMAP_PORT, timeout=60)
     try:
-        smtp.login(config.FROM_MAIL, config.FROM_PASSW)       # Логинимся в свой ящик
-        imap.login(config.FROM_MAIL, config.FROM_PASSW)
+        try:
+            smtp.login(login, password)                       # Логинимся в свой ящик
+            imap.login(login, password)
+        except (smtplib.SMTPAuthenticationError, imaplib.IMAP4.error) as e:
+            raise RuntimeError("Неверный логин или пароль почты (для mail.ru нужен "
+                               f"пароль для внешних приложений). Письма не отправлены. {e}") from None
         sent_folder = find_sent_folder(imap)
 
         for msg, to_addr in messages:
             try:
-                smtp.sendmail(config.FROM_MAIL, to_addr, msg.as_string())
+                smtp.sendmail(login, to_addr, msg.as_string())
             except smtplib.SMTPException as e:
                 failed.append(f"{to_addr}: {e}")
                 continue

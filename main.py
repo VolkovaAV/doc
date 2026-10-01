@@ -1,7 +1,7 @@
 import GDocument
 import sys
 from PyQt5.QtCore import QThread, pyqtSignal
-from PyQt5.QtWidgets import QApplication, QMessageBox, QLineEdit, QWidget, QVBoxLayout, QPushButton, QTextEdit, QDialog, QLabel, QHBoxLayout, QDialogButtonBox
+from PyQt5.QtWidgets import QApplication, QMessageBox, QLineEdit, QWidget, QVBoxLayout, QPushButton, QTextEdit, QDialog, QLabel, QHBoxLayout, QDialogButtonBox, QFormLayout
 import traceback
 import config
 
@@ -81,6 +81,48 @@ class GenerateParametersDialog(QDialog):
             'PLACE_INFO': self.place_info_edit.text().strip(),
             'OFERTA_LINK': self.oferta_link_edit.text().strip(),
         }
+
+class LoginDialog(QDialog):
+    """Запрос логина и пароля почты, с которой идет рассылка."""
+    def __init__(self, parent=None, login=""):
+        super().__init__(parent)
+        self.setWindowTitle("Вход в почту для рассылки")
+        self.setModal(True)
+
+        layout = QVBoxLayout()
+        form = QFormLayout()
+
+        self.login_edit = QLineEdit(login)
+        self.login_edit.setPlaceholderText("name@mail.ru")
+        form.addRow("Логин (email):", self.login_edit)
+
+        self.password_edit = QLineEdit()
+        self.password_edit.setEchoMode(QLineEdit.Password)  # пароль скрыт точками
+        form.addRow("Пароль:", self.password_edit)
+        layout.addLayout(form)
+
+        hint = QLabel("Для mail.ru нужен пароль для внешних приложений.\nПароль не сохраняется на диске.")
+        hint.setStyleSheet("color: gray")
+        layout.addWidget(hint)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Cancel).setText("Отмена")
+        buttons.accepted.connect(self.on_ok)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        self.setLayout(layout)
+
+        # курсор сразу в пустое поле
+        (self.password_edit if login else self.login_edit).setFocus()
+
+    def on_ok(self):
+        if not self.login_edit.text().strip() or not self.password_edit.text():
+            QMessageBox.warning(self, "Проверка", "Введите логин и пароль.")
+            return
+        self.accept()
+
+    def get_credentials(self):
+        return self.login_edit.text().strip(), self.password_edit.text()
 
 class BoolParameterDialog(QDialog):
     def __init__(self, parent=None):
@@ -173,6 +215,9 @@ class MainWindow(QWidget):
         super().__init__()
         self.setWindowTitle("DocApp")
         self.worker = None
+        # учетные данные почты: хранятся только в памяти, пока открыта программа
+        self.mail_login = config.FROM_MAIL
+        self.mail_password = ""
         self.init_ui()
 
     def init_ui(self):
@@ -223,11 +268,17 @@ class MainWindow(QWidget):
         self.run_and_log(GDocument.create.create_all_templates)
 
     def on_btn3_clicked(self):
-        """Обработчик кнопки 3 — диалог выбора параметра"""
-        dialog = BoolParameterDialog(self)
+        """Обработчик кнопки 3 — вход в почту и выбор типа рассылки"""
+        login_dialog = LoginDialog(self, self.mail_login)
+        if login_dialog.exec_() != QDialog.Accepted:
+            self._log("Рассылка отменена")
+            return
+        self.mail_login, self.mail_password = login_dialog.get_credentials()
 
+        dialog = BoolParameterDialog(self)
         if dialog.exec_() == QDialog.Accepted and dialog.selected_value is not None:
-            self.run_and_log(GDocument.send_all, testing=dialog.selected_value)
+            self.run_and_log(GDocument.send_all, testing=dialog.selected_value,
+                             login=self.mail_login, password=self.mail_password)
         else:
             self._log("Выбор параметра отменен")
 
