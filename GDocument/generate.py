@@ -8,6 +8,7 @@ from num2words import num2words
 
 import html
 import os
+import re
 from string import Template
 from typing import Dict, Optional
 
@@ -25,6 +26,19 @@ OUT_DIR = os.path.join(config.FILES_FOLDER_NAME, 'out')
 PDF_DIR = os.path.join(config.FILES_FOLDER_NAME, 'pdf')
 QR_DIR = os.path.join(config.FILES_FOLDER_NAME, 'qr_code')
 
+
+# адрес email: имя@домен.зона (буквы, цифры и . _ % + - ; домен может быть кириллическим)
+EMAIL_RE = re.compile(r'[\w.%+-]+@[\w-]+(?:\.[\w-]+)+')
+
+
+def first_email(value):
+    '''
+    Первый email из ячейки, где может быть записано несколько адресов
+    через запятую, точку с запятой, пробел, перенос строки и т.п.
+    Возвращает (первый адрес или None, количество найденных адресов).
+    '''
+    found = EMAIL_RE.findall(str(value))
+    return (found[0] if found else None), len(found)
 
 def has_middle_name(df):
     '''Есть ли у участника отчество (пустые ячейки Excel читаются как NaN)'''
@@ -59,6 +73,16 @@ def load_participants():
             raise ValueError(f"В '{config.TB_NAME}' не заполнен столбец '{col}' (строки: {rows})")
         df[col] = df[col].str.strip()
 
+    # в ячейке email может быть несколько адресов — берем первый
+    parsed = df['email'].map(first_email)
+    no_email = parsed.map(lambda x: x[0] is None)
+    if no_email.any():
+        rows = ', '.join(str(i + 2) for i in df.index[no_email])
+        raise ValueError(f"В '{config.TB_NAME}' не найден корректный email (строки: {rows})")
+    notes = [f"Строка {i + 2}: в ячейке email несколько адресов, выбран {addr}"
+             for i, (addr, count) in parsed.items() if count > 1]
+    df['email'] = parsed.map(lambda x: x[0])
+
     bad_summ = ~df['SUMM'].str.fullmatch(r'\d+')
     if bad_summ.any():
         rows = ', '.join(str(i + 2) for i in df.index[bad_summ])
@@ -73,6 +97,7 @@ def load_participants():
     # [:1] вместо [0]: для пустой строки дает '', а не NaN
     df['F_NAME'] = df['FIRST_NAME'].str[:1] + '.'
     df['M_NAME'] = np.where(middle != '', middle.str[:1] + '.', '')
+    df.attrs['notes'] = notes  # замечания для истории выполнения
     return df
 
 def fname(df, type):
@@ -223,7 +248,7 @@ def gen_all():
     df1 = load_participants()
     df1['SUMM_NAME'] = df1['SUMM'].apply(lambda x: num2words(int(x), lang='ru'))
 
-    lines = [generate_one_person(df1.iloc[person_ID], params) for person_ID in range(len(df1))]
+    lines = df1.attrs.get('notes', []) + [generate_one_person(df1.iloc[person_ID], params) for person_ID in range(len(df1))]
     lines.append(f'Генерация завершена! Участников: {len(df1)}')
 
     return '\n'.join(lines)

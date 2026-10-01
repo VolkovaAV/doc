@@ -106,6 +106,6 @@ def send_all(testing, login, password):
         except smtplib.SMTPException:
             pass
 
-    lines = sent + [f"ОШИБКА отправки {x}" for x in failed]
+    lines = df.attrs.get('notes', []) + sent + [f"ОШИБКА отправки {x}" for x in failed]
     lines.append(f"Отправка завершена: отправлено {len(sent)}, ошибок {len(failed)}.")
     return '\n'.join(lines)
