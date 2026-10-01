@@ -12,7 +12,7 @@ from email.header    import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
-from email.utils import formatdate, formataddr
+from email.utils import formatdate
 
 
 def _sender_rejected(e: smtplib.SMTPException) -> bool:
@@ -54,12 +54,13 @@ def find_sent_folder(imap: imaplib.IMAP4_SSL) -> str:
     # fallback, если сервер не метит \Sent
     return "Sent"
 
-def build_message(df, testing, params, from_header, test_addr):
+def build_message(df, testing, params, from_addr):
     """Собирает письмо со счетом для одного участника."""
-    to_addr = test_addr if testing else df['email']  # тест — письмо самому себе
+    to_addr = from_addr if testing else df['email']  # тест — письмо самому себе
 
     msg = MIMEMultipart()                                     # Создаем сообщение
-    msg["From"] = from_header                                 # Добавляем адрес отправителя
+    msg["From"] = from_addr                                   # Адрес отправителя (основной или псевдоним)
+    msg["Reply-To"] = from_addr                               # Ответы участников придут на этот же адрес
     msg['To'] = to_addr                                       # Добавляем адрес получателя
     msg["Subject"] = Header(f"Оплата рег.взноса {params['EVENT_NAME']}", 'utf-8')  # Пишем тему сообщения
     msg["Date"] = formatdate(localtime=True)                  # Дата сообщения
@@ -76,40 +77,62 @@ def build_message(df, testing, params, from_header, test_addr):
 
     return msg, to_addr
 
-def send_all(testing, login, password, sender_name=""):
+def _open_imap(login, password):
+    """
+    Подключение к IMAP для сохранения копий в «Отправленные».
+    Не обязательно для рассылки: при ошибке возвращает (None, текст ошибки).
+    """
+    try:
+        imap = imaplib.IMAP4_SSL(config.IMAP_SERVER, config.IMAP_PORT, timeout=60)
+    except OSError as e:
+        return None, str(e)
+    try:
+        imap.login(login, password)
+        return imap, ''
+    except imaplib.IMAP4.error as e:
+        try:
+            imap.logout()
+        except (imaplib.IMAP4.error, OSError):
+            pass
+        return None, str(e)
+
+def send_all(testing, login, password):
     """
     Рассылает счета всем участникам из таблицы.
-    testing=True — все письма уходят на адрес логина (письмо самому себе).
-    login, password — учетные данные почты (вводятся в окне входа).
-    sender_name — имя отправителя, которое видит получатель (необязательно).
+    login — адрес, с которого уходят письма (основной адрес или псевдоним ящика),
+    password — пароль для внешних приложений основного ящика.
+    testing=True — все письма уходят на адрес login (письмо самому себе).
     """
     if not login or not password:
         raise ValueError("Не указан логин или пароль почты.")
-
-    from_header = formataddr((sender_name.strip(), login), charset='utf-8')
 
     params = load_config()
     require_event_params(params)
     df = load_participants()
 
     # Сначала собираем все письма: если какого-то PDF нет, не отправляем ничего
-    messages = [build_message(df.iloc[person_ID], testing, params, from_header, login) for person_ID in range(len(df))]
+    messages = [build_message(df.iloc[person_ID], testing, params, login) for person_ID in range(len(df))]
 
-    sent, failed = [], []
+    sent, failed, warnings = [], [], []
     smtp = smtplib.SMTP_SSL(config.SERVER_ADR, config.SMTP_PORT, timeout=60)
-    imap = imaplib.IMAP4_SSL(config.IMAP_SERVER, config.IMAP_PORT, timeout=60)
+    imap = None
     try:
         try:
-            smtp.login(login, password)                       # Логинимся в свой ящик
-            imap.login(login, password)
-        except (smtplib.SMTPAuthenticationError, imaplib.IMAP4.error) as e:
+            smtp.login(login, password)                       # Логинимся в ящик (можно под псевдонимом)
+        except smtplib.SMTPAuthenticationError as e:
             raise RuntimeError("Неверный логин или пароль почты (для mail.ru нужен "
                                f"пароль для внешних приложений). Письма не отправлены. {e}") from None
-        sent_folder = find_sent_folder(imap)
+
+        imap, imap_error = _open_imap(login, password)
+        if imap is None:
+            warnings.append("ВНИМАНИЕ: не удалось войти по IMAP, копии писем не сохранены "
+                            f"в «Отправленные». {imap_error}")
+        else:
+            sent_folder = find_sent_folder(imap)
 
         for msg, to_addr in messages:
             try:
-                smtp.sendmail(login, to_addr, msg.as_string())
+                smtp.send_message(msg, from_addr=login, to_addrs=[to_addr])
             except smtplib.SMTPException as e:
                 if _sender_rejected(e):
                     # сервер не разрешает такого отправителя — остальные письма тоже не уйдут
@@ -118,11 +141,14 @@ def send_all(testing, login, password, sender_name=""):
                 failed.append(f"{to_addr}: {e}")
                 continue
 
-            # Кладем копию письма в папку «Отправленные»
-            status, _ = imap.append(sent_folder, '\\Seen',
-                                    imaplib.Time2Internaldate(time.time()),
-                                    msg.as_bytes())
-            note = '' if status == 'OK' else ' (не удалось сохранить в «Отправленные»)'
+            note = ''
+            if imap is not None:
+                # Кладем копию письма в папку «Отправленные»
+                status, _ = imap.append(sent_folder, '\\Seen',
+                                        imaplib.Time2Internaldate(time.time()),
+                                        msg.as_bytes())
+                if status != 'OK':
+                    note = ' (не удалось сохранить в «Отправленные»)'
             sent.append(f"Письмо отправлено: {to_addr}{note}")
             time.sleep(config.SEND_DELAY)
     finally:
@@ -130,11 +156,12 @@ def send_all(testing, login, password, sender_name=""):
             smtp.quit()
         except smtplib.SMTPException:
             pass
-        try:
-            imap.logout()
-        except imaplib.IMAP4.error:
-            pass
+        if imap is not None:
+            try:
+                imap.logout()
+            except imaplib.IMAP4.error:
+                pass
 
-    lines = sent + [f"ОШИБКА отправки {x}" for x in failed]
+    lines = warnings + sent + [f"ОШИБКА отправки {x}" for x in failed]
     lines.append(f"Отправка завершена: отправлено {len(sent)}, ошибок {len(failed)}.")
     return '\n'.join(lines)

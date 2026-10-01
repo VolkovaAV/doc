@@ -84,7 +84,7 @@ class GenerateParametersDialog(QDialog):
 
 class LoginDialog(QDialog):
     """Запрос логина и пароля почты, с которой идет рассылка."""
-    def __init__(self, parent=None, login="", sender_name=""):
+    def __init__(self, parent=None, login=""):
         super().__init__(parent)
         self.setWindowTitle("Вход в почту для рассылки")
         self.setModal(True)
@@ -93,19 +93,17 @@ class LoginDialog(QDialog):
         form = QFormLayout()
 
         self.login_edit = QLineEdit(login)
-        self.login_edit.setPlaceholderText("name@mail.ru")
-        form.addRow("Логин (email):", self.login_edit)
+        self.login_edit.setPlaceholderText("основной адрес или псевдоним, н-р info@mail.ru")
+        form.addRow("Логин (email или псевдоним):", self.login_edit)
 
         self.password_edit = QLineEdit()
         self.password_edit.setEchoMode(QLineEdit.Password)  # пароль скрыт точками
         form.addRow("Пароль:", self.password_edit)
-
-        self.sender_name_edit = QLineEdit(sender_name)
-        self.sender_name_edit.setPlaceholderText("необязательно, н-р МЦФПИН")
-        form.addRow("Имя отправителя:", self.sender_name_edit)
         layout.addLayout(form)
 
-        hint = QLabel("Для mail.ru нужен пароль для внешних приложений.\nПароль не сохраняется на диске.")
+        hint = QLabel("Письма уйдут с адреса, указанного в поле «Логин».\n"
+                      "Пароль — для внешних приложений основного ящика (в т.ч. при входе под псевдонимом).\n"
+                      "Пароль не сохраняется на диске.")
         hint.setStyleSheet("color: gray")
         layout.addWidget(hint)
 
@@ -127,10 +125,6 @@ class LoginDialog(QDialog):
 
     def get_credentials(self):
         return self.login_edit.text().strip(), self.password_edit.text()
-
-    def get_sender_name(self):
-        """Имя отправителя, которое видит получатель."""
-        return self.sender_name_edit.text().strip()
 
 class BoolParameterDialog(QDialog):
     def __init__(self, parent=None, test_address=""):
@@ -227,7 +221,6 @@ class MainWindow(QWidget):
         # учетные данные почты: хранятся только в памяти, пока открыта программа
         self.mail_login = config.FROM_MAIL
         self.mail_password = ""
-        self.sender_name = config.FROM_NAME    # имя отправителя
         self.init_ui()
 
     def init_ui(self):
@@ -279,18 +272,16 @@ class MainWindow(QWidget):
 
     def on_btn3_clicked(self):
         """Обработчик кнопки 3 — вход в почту и выбор типа рассылки"""
-        login_dialog = LoginDialog(self, self.mail_login, self.sender_name)
+        login_dialog = LoginDialog(self, self.mail_login)
         if login_dialog.exec_() != QDialog.Accepted:
             self._log("Рассылка отменена")
             return
         self.mail_login, self.mail_password = login_dialog.get_credentials()
-        self.sender_name = login_dialog.get_sender_name()
 
         dialog = BoolParameterDialog(self, test_address=self.mail_login)
         if dialog.exec_() == QDialog.Accepted and dialog.selected_value is not None:
             self.run_and_log(GDocument.send_all, testing=dialog.selected_value,
-                             login=self.mail_login, password=self.mail_password,
-                             sender_name=self.sender_name)
+                             login=self.mail_login, password=self.mail_password)
         else:
             self._log("Выбор параметра отменен")
 
