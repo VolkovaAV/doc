@@ -15,6 +15,22 @@ from email import encoders
 from email.utils import formatdate, formataddr
 
 
+def _sender_rejected(e: smtplib.SMTPException) -> bool:
+    """
+    Отказ из-за адреса отправителя (а не из-за конкретного получателя).
+    mail.ru отвечает на это «501 sender address must match authenticated user»
+    уже на этапе получателя, поэтому смотрим текст ответа сервера.
+    """
+    if isinstance(e, smtplib.SMTPSenderRefused):
+        return True
+    if isinstance(e, smtplib.SMTPRecipientsRefused):
+        responses = [resp for _, resp in e.recipients.values()]
+    elif isinstance(e, smtplib.SMTPResponseException):
+        responses = [e.smtp_error]
+    else:
+        return False
+    return any(b'sender' in (r if isinstance(r, bytes) else str(r).encode()).lower() for r in responses)
+
 def find_sent_folder(imap: imaplib.IMAP4_SSL) -> str:
     """
     Возвращает название папки "Отправленные" для текущего IMAP-сервера.
@@ -95,13 +111,16 @@ def send_all(testing, login, password, sender_addr="", sender_name=""):
 
         for msg, to_addr in messages:
             try:
-                smtp.sendmail(sender_addr, to_addr, msg.as_string())
-            except smtplib.SMTPSenderRefused as e:
-                # сервер не разрешает отправку с этого адреса — остальные письма тоже не уйдут
-                raise RuntimeError(
-                    f"Сервер запретил отправку с адреса {sender_addr}. Проверьте, что псевдоним "
-                    f"добавлен в настройках ящика {login}. Отправлено писем: {len(sent)}. {e}") from None
+                # Служебный адрес отправителя (MAIL FROM) — всегда логин: mail.ru не разрешает
+                # другой. Псевдоним и имя видны получателю через заголовок From.
+                smtp.sendmail(login, to_addr, msg.as_string())
             except smtplib.SMTPException as e:
+                if _sender_rejected(e):
+                    # сервер не разрешает такого отправителя — остальные письма тоже не уйдут
+                    raise RuntimeError(
+                        f"Сервер не разрешает отправлять письма от {sender_addr} при входе как {login}. "
+                        "Оставьте поле «Адрес отправителя (псевдоним)» пустым или войдите в почту "
+                        f"под адресом псевдонима. Отправлено писем: {len(sent)}. {e}") from None
                 failed.append(f"{to_addr}: {e}")
                 continue
 
