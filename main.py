@@ -125,8 +125,9 @@ class LoginDialog(QDialog):
         return self.login_edit.text().strip(), self.password_edit.text()
 
 class BoolParameterDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, test_address=""):
         super().__init__(parent)
+        self.test_address = test_address
         self.setWindowTitle("Выбор параметров отправки")
         self.setModal(True)
         self.init_ui()
@@ -151,7 +152,7 @@ class BoolParameterDialog(QDialog):
 
         test_info_layout = QHBoxLayout()
         # Подпись под кнопкой
-        self.test_label = QLabel(f"Тестовое письмо будет отправлено на: {config.TO_MAIL_TEST}")
+        self.test_label = QLabel(f"Тестовое письмо будет отправлено на: {self.test_address}")
         test_info_layout.addWidget(self.test_label)
 
         layout.addLayout(button_layout)
@@ -275,7 +276,7 @@ class MainWindow(QWidget):
             return
         self.mail_login, self.mail_password = login_dialog.get_credentials()
 
-        dialog = BoolParameterDialog(self)
+        dialog = BoolParameterDialog(self, test_address=self.mail_login)
         if dialog.exec_() == QDialog.Accepted and dialog.selected_value is not None:
             self.run_and_log(GDocument.send_all, testing=dialog.selected_value,
                              login=self.mail_login, password=self.mail_password)

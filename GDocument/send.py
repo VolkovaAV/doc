@@ -40,7 +40,7 @@ def find_sent_folder(imap: imaplib.IMAP4_SSL) -> str:
 
 def build_message(df, testing, params, from_addr):
     """Собирает письмо со счетом для одного участника."""
-    to_addr = config.TO_MAIL_TEST if testing else df['email']
+    to_addr = from_addr if testing else df['email']  # тест — письмо самому себе
 
     msg = MIMEMultipart()                                     # Создаем сообщение
     msg["From"] = from_addr                                   # Добавляем адрес отправителя
@@ -63,7 +63,7 @@ def build_message(df, testing, params, from_addr):
 def send_all(testing, login, password):
     """
     Рассылает счета всем участникам из таблицы.
-    testing=True — все письма уходят на config.TO_MAIL_TEST.
+    testing=True — все письма уходят на адрес отправителя (login).
     login, password — учетные данные почты-отправителя (вводятся в окне входа).
     """
     if not login or not password:
