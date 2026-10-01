@@ -76,19 +76,17 @@ def build_message(df, testing, params, from_header, test_addr):
 
     return msg, to_addr
 
-def send_all(testing, login, password, sender_addr="", sender_name=""):
+def send_all(testing, login, password, sender_name=""):
     """
     Рассылает счета всем участникам из таблицы.
     testing=True — все письма уходят на адрес логина (письмо самому себе).
     login, password — учетные данные почты (вводятся в окне входа).
-    sender_addr — псевдоним, с которого уходят письма (пусто — адрес логина).
     sender_name — имя отправителя, которое видит получатель (необязательно).
     """
     if not login or not password:
         raise ValueError("Не указан логин или пароль почты.")
 
-    sender_addr = (sender_addr or login).strip()
-    from_header = formataddr((sender_name.strip(), sender_addr), charset='utf-8')
+    from_header = formataddr((sender_name.strip(), login), charset='utf-8')
 
     params = load_config()
     require_event_params(params)
@@ -111,16 +109,12 @@ def send_all(testing, login, password, sender_addr="", sender_name=""):
 
         for msg, to_addr in messages:
             try:
-                # Служебный адрес отправителя (MAIL FROM) — всегда логин: mail.ru не разрешает
-                # другой. Псевдоним и имя видны получателю через заголовок From.
                 smtp.sendmail(login, to_addr, msg.as_string())
             except smtplib.SMTPException as e:
                 if _sender_rejected(e):
                     # сервер не разрешает такого отправителя — остальные письма тоже не уйдут
                     raise RuntimeError(
-                        f"Сервер не разрешает отправлять письма от {sender_addr} при входе как {login}. "
-                        "Оставьте поле «Адрес отправителя (псевдоним)» пустым или войдите в почту "
-                        f"под адресом псевдонима. Отправлено писем: {len(sent)}. {e}") from None
+                        f"Сервер отклонил отправителя {login}. Отправлено писем: {len(sent)}. {e}") from None
                 failed.append(f"{to_addr}: {e}")
                 continue
 
