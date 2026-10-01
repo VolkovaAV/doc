@@ -12,7 +12,7 @@ from email.header    import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
-from email.utils import formatdate
+from email.utils import formatdate, formataddr
 
 
 def find_sent_folder(imap: imaplib.IMAP4_SSL) -> str:
@@ -38,12 +38,12 @@ def find_sent_folder(imap: imaplib.IMAP4_SSL) -> str:
     # fallback, если сервер не метит \Sent
     return "Sent"
 
-def build_message(df, testing, params, from_addr):
+def build_message(df, testing, params, from_header, test_addr):
     """Собирает письмо со счетом для одного участника."""
-    to_addr = from_addr if testing else df['email']  # тест — письмо самому себе
+    to_addr = test_addr if testing else df['email']  # тест — письмо самому себе
 
     msg = MIMEMultipart()                                     # Создаем сообщение
-    msg["From"] = from_addr                                   # Добавляем адрес отправителя
+    msg["From"] = from_header                                 # Добавляем адрес отправителя
     msg['To'] = to_addr                                       # Добавляем адрес получателя
     msg["Subject"] = Header(f"Оплата рег.взноса {params['EVENT_NAME']}", 'utf-8')  # Пишем тему сообщения
     msg["Date"] = formatdate(localtime=True)                  # Дата сообщения
@@ -60,21 +60,26 @@ def build_message(df, testing, params, from_addr):
 
     return msg, to_addr
 
-def send_all(testing, login, password):
+def send_all(testing, login, password, sender_addr="", sender_name=""):
     """
     Рассылает счета всем участникам из таблицы.
-    testing=True — все письма уходят на адрес отправителя (login).
-    login, password — учетные данные почты-отправителя (вводятся в окне входа).
+    testing=True — все письма уходят на адрес логина (письмо самому себе).
+    login, password — учетные данные почты (вводятся в окне входа).
+    sender_addr — псевдоним, с которого уходят письма (пусто — адрес логина).
+    sender_name — имя отправителя, которое видит получатель (необязательно).
     """
     if not login or not password:
         raise ValueError("Не указан логин или пароль почты.")
+
+    sender_addr = (sender_addr or login).strip()
+    from_header = formataddr((sender_name.strip(), sender_addr), charset='utf-8')
 
     params = load_config()
     require_event_params(params)
     df = load_participants()
 
     # Сначала собираем все письма: если какого-то PDF нет, не отправляем ничего
-    messages = [build_message(df.iloc[person_ID], testing, params, login) for person_ID in range(len(df))]
+    messages = [build_message(df.iloc[person_ID], testing, params, from_header, login) for person_ID in range(len(df))]
 
     sent, failed = [], []
     smtp = smtplib.SMTP_SSL(config.SERVER_ADR, config.SMTP_PORT, timeout=60)
@@ -90,7 +95,12 @@ def send_all(testing, login, password):
 
         for msg, to_addr in messages:
             try:
-                smtp.sendmail(login, to_addr, msg.as_string())
+                smtp.sendmail(sender_addr, to_addr, msg.as_string())
+            except smtplib.SMTPSenderRefused as e:
+                # сервер не разрешает отправку с этого адреса — остальные письма тоже не уйдут
+                raise RuntimeError(
+                    f"Сервер запретил отправку с адреса {sender_addr}. Проверьте, что псевдоним "
+                    f"добавлен в настройках ящика {login}. Отправлено писем: {len(sent)}. {e}") from None
             except smtplib.SMTPException as e:
                 failed.append(f"{to_addr}: {e}")
                 continue

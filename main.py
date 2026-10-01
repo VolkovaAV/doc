@@ -84,7 +84,7 @@ class GenerateParametersDialog(QDialog):
 
 class LoginDialog(QDialog):
     """Запрос логина и пароля почты, с которой идет рассылка."""
-    def __init__(self, parent=None, login=""):
+    def __init__(self, parent=None, login="", sender_addr="", sender_name=""):
         super().__init__(parent)
         self.setWindowTitle("Вход в почту для рассылки")
         self.setModal(True)
@@ -99,9 +99,18 @@ class LoginDialog(QDialog):
         self.password_edit = QLineEdit()
         self.password_edit.setEchoMode(QLineEdit.Password)  # пароль скрыт точками
         form.addRow("Пароль:", self.password_edit)
+
+        self.sender_name_edit = QLineEdit(sender_name)
+        self.sender_name_edit.setPlaceholderText("необязательно, н-р МЦФПИН")
+        form.addRow("Имя отправителя:", self.sender_name_edit)
+
+        self.sender_addr_edit = QLineEdit(sender_addr)
+        self.sender_addr_edit.setPlaceholderText("пусто — с адреса логина")
+        form.addRow("Адрес отправителя (псевдоним):", self.sender_addr_edit)
         layout.addLayout(form)
 
-        hint = QLabel("Для mail.ru нужен пароль для внешних приложений.\nПароль не сохраняется на диске.")
+        hint = QLabel("Для mail.ru нужен пароль для внешних приложений.\nПароль не сохраняется на диске.\n"
+                      "Псевдоним должен быть добавлен в настройках ящика.")
         hint.setStyleSheet("color: gray")
         layout.addWidget(hint)
 
@@ -119,10 +128,18 @@ class LoginDialog(QDialog):
         if not self.login_edit.text().strip() or not self.password_edit.text():
             QMessageBox.warning(self, "Проверка", "Введите логин и пароль.")
             return
+        alias = self.sender_addr_edit.text().strip()
+        if alias and (alias.count('@') != 1 or ' ' in alias):
+            QMessageBox.warning(self, "Проверка", "Адрес отправителя должен быть email, н-р info@mail.ru")
+            return
         self.accept()
 
     def get_credentials(self):
         return self.login_edit.text().strip(), self.password_edit.text()
+
+    def get_sender(self):
+        """Адрес (псевдоним) и имя отправителя."""
+        return self.sender_addr_edit.text().strip(), self.sender_name_edit.text().strip()
 
 class BoolParameterDialog(QDialog):
     def __init__(self, parent=None, test_address=""):
@@ -219,6 +236,8 @@ class MainWindow(QWidget):
         # учетные данные почты: хранятся только в памяти, пока открыта программа
         self.mail_login = config.FROM_MAIL
         self.mail_password = ""
+        self.sender_addr = config.FROM_ALIAS   # псевдоним отправителя
+        self.sender_name = config.FROM_NAME    # имя отправителя
         self.init_ui()
 
     def init_ui(self):
@@ -270,16 +289,18 @@ class MainWindow(QWidget):
 
     def on_btn3_clicked(self):
         """Обработчик кнопки 3 — вход в почту и выбор типа рассылки"""
-        login_dialog = LoginDialog(self, self.mail_login)
+        login_dialog = LoginDialog(self, self.mail_login, self.sender_addr, self.sender_name)
         if login_dialog.exec_() != QDialog.Accepted:
             self._log("Рассылка отменена")
             return
         self.mail_login, self.mail_password = login_dialog.get_credentials()
+        self.sender_addr, self.sender_name = login_dialog.get_sender()
 
         dialog = BoolParameterDialog(self, test_address=self.mail_login)
         if dialog.exec_() == QDialog.Accepted and dialog.selected_value is not None:
             self.run_and_log(GDocument.send_all, testing=dialog.selected_value,
-                             login=self.mail_login, password=self.mail_password)
+                             login=self.mail_login, password=self.mail_password,
+                             sender_addr=self.sender_addr, sender_name=self.sender_name)
         else:
             self._log("Выбор параметра отменен")
 
