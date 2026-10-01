@@ -45,6 +45,13 @@ def load_participants():
     # полностью пустые строки (частый случай в Excel) пропускаем
     df = df.dropna(how='all').reset_index(drop=True)
 
+    names = {'LAST_NAME': 'Фамилия', 'FIRST_NAME': 'Имя', 'email': 'email', 'SUMM': 'Сумма'}
+    missing = [ru for col, ru in names.items() if col not in df.columns]
+    if missing:
+        raise ValueError(f"В '{config.TB_NAME}' нет столбцов: {', '.join(missing)}")
+    if 'MIDDLE_NAME' not in df.columns:  # столбец «Отчество» необязателен
+        df['MIDDLE_NAME'] = np.nan
+
     for col in ('LAST_NAME', 'FIRST_NAME', 'email', 'SUMM'):
         empty = df[col].isna() | (df[col].str.strip() == '')
         if empty.any():
@@ -57,12 +64,15 @@ def load_participants():
         rows = ', '.join(str(i + 2) for i in df.index[bad_summ])
         raise ValueError(f"В '{config.TB_NAME}' сумма должна быть целым числом рублей (строки: {rows})")
 
-    middle = df['MIDDLE_NAME'].fillna('').str.strip()
-    df['MIDDLE_NAME'] = middle.replace('', np.nan)
+    # Если отчества нет ни у кого, pandas читает столбец как числа (NaN),
+    # поэтому явно приводим его к строкам; пустое отчество — пустая строка.
+    middle = df['MIDDLE_NAME'].astype(object).fillna('').astype(str).str.strip()
+    df['MIDDLE_NAME'] = middle.where(middle != '', np.nan)
     df['SEX'] = np.where(middle.str.endswith('на'), 'ая', np.where(middle.str.endswith('ич'), 'ый', 'ый(ая)'))
 
-    df['F_NAME'] = df['FIRST_NAME'].str[0] + '.'
-    df['M_NAME'] = np.where(middle != '', middle.str[0] + '.', '')
+    # [:1] вместо [0]: для пустой строки дает '', а не NaN
+    df['F_NAME'] = df['FIRST_NAME'].str[:1] + '.'
+    df['M_NAME'] = np.where(middle != '', middle.str[:1] + '.', '')
     return df
 
 def fname(df, type):
